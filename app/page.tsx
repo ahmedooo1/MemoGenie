@@ -554,30 +554,159 @@ export default function Home() {
   const startEditMessage = (index: number) => {
     setEditingMessageIndex(index);
     setEditedContent(messages[index].content);
-    
-    // Ajuster la hauteur du textarea après le rendu
-    setTimeout(() => {
-      if (editTextareaRef.current) {
-        editTextareaRef.current.style.height = 'auto';
-        editTextareaRef.current.style.height = `${editTextareaRef.current.scrollHeight}px`;
-      }
-    }, 0);
   };
 
   const adjustTextareaHeight = () => {
     if (editTextareaRef.current) {
+      // Réinitialiser d'abord pour obtenir la vraie hauteur
       editTextareaRef.current.style.height = 'auto';
-      editTextareaRef.current.style.height = `${editTextareaRef.current.scrollHeight}px`;
+      // Calculer la nouvelle hauteur basée sur le scrollHeight
+      const newHeight = Math.max(60, editTextareaRef.current.scrollHeight);
+      editTextareaRef.current.style.height = `${newHeight}px`;
     }
   };
 
-  const saveEditMessage = () => {
+  // UseEffect pour ajuster la hauteur du textarea quand on entre en mode édition
+  useEffect(() => {
+    if (editingMessageIndex !== null && editTextareaRef.current) {
+      // Attendre que le DOM soit complètement mis à jour
+      requestAnimationFrame(() => {
+        adjustTextareaHeight();
+        
+        // Double vérification après un court délai
+        setTimeout(() => {
+          adjustTextareaHeight();
+        }, 50);
+      });
+    }
+  }, [editingMessageIndex]);
+
+  const saveEditMessage = async () => {
     if (editingMessageIndex !== null) {
       const updatedMessages = [...messages];
-      updatedMessages[editingMessageIndex].content = editedContent;
+      const editedMessage = updatedMessages[editingMessageIndex];
+      editedMessage.content = editedContent;
       setMessages(updatedMessages);
       setEditingMessageIndex(null);
       setEditedContent('');
+      
+      // Si c'était un message utilisateur de demande d'image, on régénère
+      if (editedMessage.role === 'user') {
+        const imageGenerationPatterns = [
+          /g[eé]n[eè]re[-\s]*(moi|nous)?\s*(une?)?\s*image/i,
+          /cr[eé][eé][-\s]*(moi|nous)?\s*(une?)?\s*image/i,
+          /fais[-\s]*(moi|nous)?\s*(une?)?\s*image/i,
+          /dessine[-\s]*(moi|nous)?/i,
+          /illustr(e|ation)/i,
+          /produis[-\s]*(une?)?\s*image/i
+        ];
+        
+        const imageModificationPatterns = [
+          /^(je veux|j'aimerais) qu(e|')il (porte|ait|soit)/i,
+          /^ajoute[-\s]*(lui|y|ses)?\s*(un|une|des|le|la|les)?/i,
+          /^modifie[-\s]/i,
+          /^change[-\s]/i,
+          /^mets[-\s]*(lui|y)?\s*(un|une|des)/i,
+          /^mais avec/i,
+          /^plutôt avec/i,
+          /^refais[-\s]*(le|la|les)?(\s+avec)?/i,
+        ];
+        
+        const isDirectImageRequest = imageGenerationPatterns.some(pattern => pattern.test(editedContent));
+        const isModificationRequest = imageModificationPatterns.some(pattern => pattern.test(editedContent));
+        
+        if (isDirectImageRequest || isModificationRequest) {
+          // Régénérer l'image avec le nouveau contenu
+          showToast('info', '🎨 Régénération de l\'image...');
+          
+          // Extraire le prompt
+          let imagePromptExtracted = editedContent
+            .replace(/g[eé]n[eè]re[-\s]*(moi|nous)?\s*(une?)?\s*image\s*(de|du|d')?/gi, '')
+            .replace(/cr[eé][eé][-\s]*(moi|nous)?\s*(une?)?\s*image\s*(de|du|d')?/gi, '')
+            .replace(/^ajoute[-\s]*(lui|y|ses)?\s*/gi, '')
+            .trim();
+          
+          if (!imagePromptExtracted) {
+            imagePromptExtracted = editedContent;
+          }
+          
+          // Si c'est une modification, chercher l'image précédente pour contexte
+          const previousImageIndex = editingMessageIndex - 2;
+          if (isModificationRequest && previousImageIndex >= 0) {
+            const prevUserMsg = updatedMessages[previousImageIndex];
+            if (prevUserMsg && prevUserMsg.role === 'user') {
+              const cleanPrev = prevUserMsg.content
+                .replace(/g[eé]n[eè]re[-\s]*(moi|nous)?\s*(une?)?\s*image\s*(de|du|d')?/gi, '')
+                .trim();
+              imagePromptExtracted = `${cleanPrev}, ${imagePromptExtracted}`;
+            }
+          }
+          
+          setIsGeneratingImage(true);
+          
+          try {
+            const response = await fetch('/api/generate-image', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ 
+                prompt: imagePromptExtracted,
+                seed: Math.floor(Math.random() * 10000)
+              }),
+            });
+
+            const data = await response.json();
+
+            if (data.success && data.imageUrl) {
+              // Récupérer les messages actuels à jour
+              setMessages(currentMessages => {
+                const newMessages = [...currentMessages];
+                const editIndex = newMessages.findIndex(msg => msg.content === editedContent && msg.role === 'user');
+                const nextMessageIndex = editIndex + 1;
+                
+                if (nextMessageIndex < newMessages.length && newMessages[nextMessageIndex].role === 'assistant') {
+                  // Remplacer l'image du message assistant suivant
+                  newMessages[nextMessageIndex] = {
+                    ...newMessages[nextMessageIndex],
+                    images: [data.imageUrl],
+                    content: `🎨 Voici l'image régénérée !`
+                  };
+                } else {
+                  // Ajouter un nouveau message assistant avec l'image
+                  newMessages.splice(nextMessageIndex, 0, {
+                    role: 'assistant',
+                    content: `🎨 Voici l'image régénérée !`,
+                    images: [data.imageUrl]
+                  });
+                }
+                
+                return newMessages;
+              });
+              
+              // Sauvegarder en BDD
+              if (selectedProject) {
+                await fetch('/api/save-message', {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({
+                    projectId: selectedProject.id,
+                    role: 'assistant',
+                    content: `🎨 Voici l'image régénérée !`,
+                    chapterId: selectedChapter?.id,
+                    images: [data.imageUrl]
+                  }),
+                });
+              }
+              
+              showToast('success', '✨ Image régénérée !');
+            }
+          } catch (error) {
+            console.error('Erreur:', error);
+            showToast('error', 'Erreur lors de la régénération');
+          } finally {
+            setIsGeneratingImage(false);
+          }
+        }
+      }
     }
   };
 
@@ -1168,6 +1297,168 @@ export default function Home() {
   const sendMessage = async () => {
     if ((!inputMessage.trim() && uploadedImages.length === 0) || !selectedProject || isGenerating) return;
 
+    // 🎨 Détecter automatiquement les demandes de génération d'images
+    const imageGenerationPatterns = [
+      /g[eé]n[eè]re[-\s]*(moi|nous)?\s*(une?)?\s*image/i,
+      /cr[eé][eé][-\s]*(moi|nous)?\s*(une?)?\s*image/i,
+      /fais[-\s]*(moi|nous)?\s*(une?)?\s*image/i,
+      /dessine[-\s]*(moi|nous)?/i,
+      /illustr(e|ation)/i,
+      /produis[-\s]*(une?)?\s*image/i
+    ];
+
+    // Patterns de modification d'image (suite à une génération) - TRÈS SPÉCIFIQUES
+    const imageModificationPatterns = [
+      /^(je veux|j'aimerais) qu(e|')il (porte|ait|soit)/i, // "je veux qu'il porte"
+      /^ajoute[-\s]*(lui|y)?\s*(un|une|des)/i, // "ajoute-lui des lunettes"
+      /^modifie[-\s]/i, // "modifie..."
+      /^change[-\s]/i, // "change..."
+      /^mets[-\s]*(lui|y)?\s*(un|une|des)/i, // "mets-lui des lunettes"
+      /^mais avec/i, // "mais avec..."
+      /^plutôt avec/i, // "plutôt avec..."
+      /^refais[-\s]*(le|la|les)?(\s+avec)?/i, // "refais-le avec..."
+      /^maintenant avec/i, // "maintenant avec..."
+      /^avec (un|une|des|le|la|les)\s+\w+\s+(de plus|en plus|aussi)/i // "avec des lunettes en plus"
+    ];
+
+    // Vérifier si le dernier message de l'assistant était une génération d'image
+    const lastAssistantMessage = messages.length > 0 && messages[messages.length - 1].role === 'assistant' 
+      ? messages[messages.length - 1] 
+      : null;
+    const wasLastMessageAnImage = lastAssistantMessage && lastAssistantMessage.images && lastAssistantMessage.images.length > 0;
+
+    // Détection : demande directe OU modification TRÈS SPÉCIFIQUE après une image
+    const isDirectImageRequest = imageGenerationPatterns.some(pattern => pattern.test(inputMessage));
+    
+    // Pour la modification : le message doit être COURT (< 100 caractères) et commencer par un pattern de modification
+    const isShortMessage = inputMessage.length < 100;
+    const matchesModificationPattern = imageModificationPatterns.some(pattern => pattern.test(inputMessage));
+    const isImageModification = wasLastMessageAnImage && isShortMessage && matchesModificationPattern;
+    
+    const isImageRequest = isDirectImageRequest || isImageModification;
+
+    if (isImageRequest && uploadedImages.length === 0) {
+      // C'est une demande de génération d'image !
+      const userMessage: Message = { 
+        role: 'user', 
+        content: inputMessage
+      };
+      const updatedMessages = [...messages, userMessage];
+      setMessages(updatedMessages);
+      setInputMessage('');
+      
+      // Sauvegarder le message utilisateur dans la BDD
+      if (selectedProject) {
+        try {
+          await fetch('/api/save-message', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              projectId: selectedProject.id,
+              role: 'user',
+              content: inputMessage,
+              chapterId: selectedChapter?.id
+            }),
+          });
+        } catch (error) {
+          console.error('❌ Erreur sauvegarde message utilisateur:', error);
+        }
+      }
+      
+      // Extraire le prompt de l'image
+      let imagePromptExtracted = '';
+      
+      if (isImageModification && wasLastMessageAnImage) {
+        // C'est une modification : on récupère le contexte de l'image précédente
+        const previousUserMessage = messages.length >= 2 ? messages[messages.length - 2] : null;
+        const previousPrompt = previousUserMessage && previousUserMessage.role === 'user' 
+          ? previousUserMessage.content 
+          : '';
+        
+        // Nettoyer le prompt précédent des mots-clés
+        const cleanPreviousPrompt = previousPrompt
+          .replace(/g[eé]n[eè]re[-\s]*(moi|nous)?\s*(une?)?\s*image\s*(de|du|d')?/gi, '')
+          .replace(/cr[eé][eé][-\s]*(moi|nous)?\s*(une?)?\s*image\s*(de|du|d')?/gi, '')
+          .replace(/fais[-\s]*(moi|nous)?\s*(une?)?\s*image\s*(de|du|d')?/gi, '')
+          .replace(/dessine[-\s]*(moi|nous)?\s*/gi, '')
+          .trim();
+        
+        // Combiner l'ancien prompt avec la modification
+        imagePromptExtracted = `${cleanPreviousPrompt}, ${inputMessage}`.trim();
+      } else {
+        // Demande directe : extraire le prompt après les mots-clés
+        imagePromptExtracted = inputMessage
+          .replace(/g[eé]n[eè]re[-\s]*(moi|nous)?\s*(une?)?\s*image\s*(de|du|d')?/gi, '')
+          .replace(/cr[eé][eé][-\s]*(moi|nous)?\s*(une?)?\s*image\s*(de|du|d')?/gi, '')
+          .replace(/fais[-\s]*(moi|nous)?\s*(une?)?\s*image\s*(de|du|d')?/gi, '')
+          .replace(/dessine[-\s]*(moi|nous)?\s*/gi, '')
+          .replace(/illustr(e|ation)\s*/gi, '')
+          .replace(/produis[-\s]*(une?)?\s*image\s*(de|du|d')?/gi, '')
+          .trim();
+      }
+
+      // Si le prompt extrait est vide, utiliser le message complet
+      if (!imagePromptExtracted) {
+        imagePromptExtracted = inputMessage;
+      }
+
+      setIsGeneratingImage(true);
+      showToast('info', '🎨 Génération de l\'image en cours...');
+      
+      // Générer l'image avec les messages à jour
+      try {
+        const response = await fetch('/api/generate-image', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ 
+            prompt: imagePromptExtracted,
+            seed: Math.floor(Math.random() * 10000)
+          }),
+        });
+
+        const data = await response.json();
+
+        if (data.success && data.imageUrl) {
+          const imageMessage: Message = {
+            role: 'assistant',
+            content: `🎨 Voici l'image générée !`,
+            images: [data.imageUrl]
+          };
+          setMessages([...updatedMessages, imageMessage]);
+          
+          // Sauvegarder la réponse avec l'image dans la BDD
+          if (selectedProject) {
+            try {
+              await fetch('/api/save-message', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                  projectId: selectedProject.id,
+                  role: 'assistant',
+                  content: imageMessage.content,
+                  chapterId: selectedChapter?.id,
+                  images: [data.imageUrl]
+                }),
+              });
+              showToast('success', '✨ Image générée avec succès !');
+            } catch (error) {
+              console.error('❌ Erreur sauvegarde image:', error);
+              showToast('warning', 'Image générée mais non sauvegardée');
+            }
+          }
+        } else {
+          showToast('error', 'Erreur lors de la génération');
+        }
+      } catch (error) {
+        console.error('Erreur génération:', error);
+        showToast('error', 'Erreur lors de la génération');
+      } finally {
+        setIsGeneratingImage(false);
+      }
+      
+      return;
+    }
+
     const userMessage: Message = { 
       role: 'user', 
       content: inputMessage || "Analyse cette image",
@@ -1629,10 +1920,10 @@ export default function Home() {
               <div className="text-center">
                 <Sparkles className="w-16 h-16 text-purple-500 mx-auto mb-4 animate-float" />
                 <h2 className="text-2xl font-bold text-white mb-2">
-                  Bienvenue dans votre Assistant Mémoire IA
+                  Bienvenue sur MemoGenie 🚀
                 </h2>
                 <p className="text-gray-400">
-                  Créez un projet pour commencer la rédaction
+                  Créez un projet pour commencer ou discutez directement avec l'IA
                 </p>
               </div>
             </div>
@@ -1645,9 +1936,9 @@ export default function Home() {
                   animate={{ opacity: 1, y: 0 }}
                   className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'} group`}
                 >
-                  <div className="relative">
+                  <div className="relative w-full">
                     <div
-                      className={`max-w-3xl px-6 py-4 rounded-2xl ${
+                      className={`w-full px-6 py-4 rounded-2xl ${
                         msg.role === 'user'
                           ? 'bg-gradient-to-r from-purple-500 to-pink-500 text-white'
                           : 'bg-white/10 text-white backdrop-blur-xl'
@@ -1679,8 +1970,8 @@ export default function Home() {
                               setEditedContent(e.target.value);
                               adjustTextareaHeight();
                             }}
-                            className="w-full px-3 py-2 bg-white/10 border border-white/20 rounded-lg text-white resize-none focus:outline-none focus:ring-2 focus:ring-purple-500 leading-relaxed"
-                            style={{ minHeight: '100px' }}
+                            rows={Math.max(3, editedContent.split('\n').length)}
+                            className="w-full px-3 py-2 bg-white/10 border border-white/20 rounded-lg text-white resize-y focus:outline-none focus:ring-2 focus:ring-purple-500 leading-relaxed"
                             autoFocus
                           />
                           <div className="flex gap-2 justify-end">
