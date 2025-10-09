@@ -1721,6 +1721,30 @@ export default function Home() {
                 </motion.div>
               ))}
               
+              {/* Indicateur de typing - Trois points animés */}
+              {isGenerating && !streamingContent && (
+                <motion.div
+                  initial={{ opacity: 0, y: 10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ duration: 0.3 }}
+                  className="flex justify-start"
+                >
+                  <div className="px-6 py-4 rounded-2xl bg-gradient-to-r from-white/10 to-white/5 backdrop-blur-xl border border-white/10 shadow-lg">
+                    <div className="flex items-center gap-3">
+                      <div className="w-10 h-10 rounded-full bg-gradient-to-br from-purple-500 to-pink-500 flex items-center justify-center shadow-md">
+                        <Sparkles className="w-5 h-5 text-white animate-pulse" />
+                      </div>
+                      <div className="flex gap-2 items-center">
+                        <span className="w-2.5 h-2.5 bg-purple-400 rounded-full typing-dot-1 shadow-sm"></span>
+                        <span className="w-2.5 h-2.5 bg-purple-400 rounded-full typing-dot-2 shadow-sm"></span>
+                        <span className="w-2.5 h-2.5 bg-purple-400 rounded-full typing-dot-3 shadow-sm"></span>
+                      </div>
+                      <span className="text-xs text-gray-400 font-medium ml-1">L'IA réfléchit...</span>
+                    </div>
+                  </div>
+                </motion.div>
+              )}
+              
               {/* Streaming en temps réel - Animation de machine à écrire */}
               {streamingContent && (
                 <motion.div

@@ -5,7 +5,7 @@ import { Inter } from 'next/font/google'
 const inter = Inter({ subsets: ['latin'] })
 
 export const metadata: Metadata = {
-  title: 'MemoGenie 🧞‍♂️ - Your Intelligent Writing Companion',
+  title: 'MemoGenie 🤖 - Your Intelligent Writing Companion',
   description: 'MemoGenie - AI-powered assistant for academic papers and general knowledge. Write smarter, not harder.',
 }
 

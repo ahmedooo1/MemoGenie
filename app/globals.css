@@ -61,3 +61,30 @@ body {
 .streaming-text {
   animation: fadeIn 0.2s ease-out;
 }
+
+/* Animation des trois points de typing */
+@keyframes typing-dot {
+  0%, 60%, 100% {
+    transform: translateY(0);
+    opacity: 0.5;
+  }
+  30% {
+    transform: translateY(-8px);
+    opacity: 1;
+  }
+}
+
+.typing-dot-1 {
+  animation: typing-dot 1.4s infinite;
+  animation-delay: 0ms;
+}
+
+.typing-dot-2 {
+  animation: typing-dot 1.4s infinite;
+  animation-delay: 200ms;
+}
+
+.typing-dot-3 {
+  animation: typing-dot 1.4s infinite;
+  animation-delay: 400ms;
+}
