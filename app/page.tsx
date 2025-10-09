@@ -481,6 +481,58 @@ export default function Home() {
     }
   };
 
+  // Fonction pour gérer le collage d'images
+  const handlePaste = async (e: React.ClipboardEvent<HTMLInputElement>) => {
+    const items = e.clipboardData?.items;
+    if (!items) return;
+
+    let hasImages = false;
+    const newImages: string[] = [];
+    let processedCount = 0;
+    let totalImages = 0;
+    
+    // Compter d'abord le nombre d'images
+    for (let i = 0; i < items.length; i++) {
+      if (items[i].type.startsWith('image/')) {
+        totalImages++;
+      }
+    }
+    
+    if (totalImages === 0) return; // Pas d'images, laisser le comportement par défaut
+    
+    e.preventDefault(); // Empêcher le collage du texte par défaut seulement si on a des images
+    
+    for (let i = 0; i < items.length; i++) {
+      const item = items[i];
+      
+      // Vérifier si c'est une image
+      if (item.type.startsWith('image/')) {
+        hasImages = true;
+        const file = item.getAsFile();
+        
+        if (file) {
+          const reader = new FileReader();
+          reader.onload = (event) => {
+            if (event.target?.result) {
+              newImages.push(event.target.result as string);
+              processedCount++;
+              
+              // Mettre à jour seulement quand toutes les images sont traitées
+              if (processedCount === totalImages) {
+                setUploadedImages(prev => [...prev, ...newImages]);
+                const message = totalImages === 1 
+                  ? '📷 Image collée avec succès !' 
+                  : `📷 ${totalImages} images collées avec succès !`;
+                showToast('success', message);
+              }
+            }
+          };
+          reader.readAsDataURL(file);
+        }
+      }
+    }
+  };
+
   const removeImage = (index: number) => {
     setUploadedImages(uploadedImages.filter((_, i) => i !== index));
   };
@@ -1877,9 +1929,11 @@ export default function Home() {
                 value={inputMessage}
                 onChange={(e) => setInputMessage(e.target.value)}
                 onKeyPress={(e) => e.key === 'Enter' && !e.shiftKey && sendMessage()}
-                placeholder="Votre message..."
+                onPaste={handlePaste}
+                placeholder="Tapez votre message ou collez une image (Ctrl+V)..."
                 className="flex-1 px-3 py-3 bg-white/10 border border-white/20 rounded-xl text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-purple-500 text-sm min-w-0"
                 disabled={isGenerating}
+                title="Vous pouvez coller des images directement avec Ctrl+V (ou Cmd+V sur Mac)"
               />
               {isGenerating ? (
                 <button
