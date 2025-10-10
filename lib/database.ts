@@ -19,7 +19,7 @@ db.exec(`
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     title TEXT NOT NULL,
     description TEXT,
-    project_type TEXT DEFAULT 'memoir' CHECK(project_type IN ('memoir', 'chatbot')),
+    project_type TEXT DEFAULT 'memoir',
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
   );
@@ -71,7 +71,7 @@ export interface Project {
   id?: number;
   title: string;
   description?: string;
-  project_type?: 'memoir' | 'chatbot';
+  project_type?: 'memoir' | 'chatbot' | 'image-studio' | 'creative-writing' | 'social-media' | 'professional-docs' | 'emails' | 'translation' | 'prompt-generator' | 'text-minify' | 'word-counter';
   created_at?: string;
   updated_at?: string;
 }
@@ -107,7 +107,7 @@ export interface ContextMemory {
 }
 
 // Fonctions pour les projets
-export const createProject = (title: string, description?: string, projectType: 'memoir' | 'chatbot' = 'memoir'): number => {
+export const createProject = (title: string, description?: string, projectType: 'memoir' | 'chatbot' | 'image-studio' | 'creative-writing' | 'social-media' | 'professional-docs' | 'emails' | 'translation' | 'prompt-generator' | 'text-minify' | 'word-counter' = 'memoir'): number => {
   const stmt = db.prepare('INSERT INTO projects (title, description, project_type) VALUES (?, ?, ?)');
   const result = stmt.run(title, description || '', projectType);
   return result.lastInsertRowid as number;
@@ -204,6 +204,11 @@ export const getRecentConversations = (projectId: number, limit: number = 20): C
   );
   const conversations = stmt.all(projectId, limit) as Conversation[];
   return conversations.reverse(); // Inverser pour avoir l'ordre chronologique
+};
+
+export const deleteConversation = (conversationId: number) => {
+  const stmt = db.prepare('DELETE FROM conversations WHERE id = ?');
+  stmt.run(conversationId);
 };
 
 // Fonctions pour la mémoire de contexte

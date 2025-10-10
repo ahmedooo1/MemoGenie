@@ -29,17 +29,155 @@ import {
   Check,
   XCircle,
   CheckCircle,
+  Paperclip,
+  File,
+  Palette,
+  Pen,
+  MessageSquare,
+  Briefcase,
+  Mail,
+  Globe,
+  Target,
   AlertCircle,
   Info,
   Menu,
   PanelLeftClose,
   PanelLeft,
+  Minimize2,
+  Calculator,
 } from 'lucide-react';
+
+type ProjectType = 'memoir' | 'chatbot' | 'image-studio' | 'creative-writing' | 'social-media' | 'professional-docs' | 'emails' | 'translation' | 'prompt-generator' | 'text-minify' | 'word-counter';
+
+interface ProjectTypeInfo {
+  id: ProjectType;
+  name: string;
+  icon: any; // Lucide icon component
+  emoji: string;
+  description: string;
+  color: string;
+  features?: string[]; // Optional features list
+  gradient?: string; // Optional gradient for UI
+}
+
+const PROJECT_TYPES: ProjectTypeInfo[] = [
+  {
+    id: 'chatbot',
+    name: 'Chatbot Général',
+    icon: Sparkles,
+    emoji: '💬',
+    description: 'Assistant IA polyvalent pour toutes vos questions',
+    color: 'blue',
+    gradient: 'from-blue-500 to-cyan-500',
+    features: ['Conversations naturelles', 'Réponses contextuelles', 'Multi-sujets']
+  },
+  {
+    id: 'memoir',
+    name: 'Mémoire Académique',
+    icon: BookOpen,
+    emoji: '📚',
+    description: 'Rédaction de thèses et mémoires universitaires',
+    color: 'purple',
+    gradient: 'from-purple-500 to-pink-500',
+    features: ['Structure académique', 'Citations et références', 'Chapitres organisés']
+  },
+  {
+    id: 'image-studio',
+    name: 'Studio d\'Images IA',
+    icon: Palette,
+    emoji: '🎨',
+    description: 'Génération et modification d\'images',
+    color: 'pink',
+    gradient: 'from-pink-500 to-rose-500',
+    features: ['Génération d\'images', 'Modification créative', 'Styles variés']
+  },
+  {
+    id: 'creative-writing',
+    name: 'Rédaction Créative',
+    icon: Pen,
+    emoji: '✍️',
+    description: 'Romans, nouvelles et histoires',
+    color: 'orange',
+    gradient: 'from-orange-500 to-amber-500',
+    features: ['Création de personnages', 'Développement d\'intrigues', 'Styles littéraires']
+  },
+  {
+    id: 'social-media',
+    name: 'Réseaux Sociaux',
+    icon: MessageSquare,
+    emoji: '📱',
+    description: 'Posts optimisés pour réseaux sociaux',
+    color: 'green',
+    gradient: 'from-green-500 to-emerald-500',
+    features: ['Posts engageants', 'Hashtags optimisés', 'Multi-plateformes']
+  },
+  {
+    id: 'professional-docs',
+    name: 'Documents Professionnels',
+    icon: Briefcase,
+    emoji: '💼',
+    description: 'Rapports et présentations',
+    color: 'indigo',
+    gradient: 'from-indigo-500 to-purple-500',
+    features: ['Rapports structurés', 'Présentations PowerPoint', 'Documents formels']
+  },
+  {
+    id: 'emails',
+    name: 'Emails & Correspondance',
+    icon: Mail,
+    emoji: '✉️',
+    description: 'Rédaction d\'emails professionnels',
+    color: 'cyan',
+    gradient: 'from-cyan-500 to-blue-500',
+    features: ['Ton professionnel', 'Réponses rapides', 'Templates personnalisés']
+  },
+  {
+    id: 'translation',
+    name: 'Traduction',
+    icon: Globe,
+    emoji: '🌍',
+    description: 'Traduction contextuelle multi-langues',
+    color: 'teal',
+    gradient: 'from-teal-500 to-cyan-500',
+    features: ['Traduction précise', 'Contexte préservé', '50+ langues']
+  },
+  {
+    id: 'prompt-generator',
+    name: 'Prompt Generator',
+    icon: Target,
+    emoji: '🎯',
+    description: 'Optimiser vos prompts pour IA',
+    color: 'amber',
+    gradient: 'from-amber-500 to-yellow-500',
+    features: ['Prompts optimisés', 'Instructions claires', 'Meilleurs résultats']
+  },
+  {
+    id: 'text-minify',
+    name: 'Minificateur de Texte',
+    icon: Minimize2,
+    emoji: '📦',
+    description: 'Compresser et réduire vos textes',
+    color: 'slate',
+    gradient: 'from-slate-500 to-gray-500',
+    features: ['Compression intelligente', 'Préservation du sens', 'Réduction de taille']
+  },
+  {
+    id: 'word-counter',
+    name: 'Compteur de Mots',
+    icon: Calculator,
+    emoji: '🔢',
+    description: 'Analyse complète de vos textes',
+    color: 'emerald',
+    gradient: 'from-emerald-500 to-teal-500',
+    features: ['Compte mots & caractères', 'Analyse de phrases', 'Statistiques détaillées']
+  }
+];
 
 interface Project {
   id: number;
   title: string;
   description?: string;
+  project_type?: ProjectType;
 }
 
 interface Chapter {
@@ -51,6 +189,7 @@ interface Chapter {
 }
 
 interface Message {
+  id?: number; // ID de la BDD pour pouvoir supprimer
   role: 'user' | 'assistant';
   content: string;
   images?: string[]; // Base64 des images
@@ -152,7 +291,9 @@ export default function Home() {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const [showNewProjectModal, setShowNewProjectModal] = useState(false);
   const [uploadedImages, setUploadedImages] = useState<string[]>([]);
+  const [uploadedFiles, setUploadedFiles] = useState<{name: string, type: string, content: string}[]>([]);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const pdfInputRef = useRef<HTMLInputElement>(null);
   const [editingMessageIndex, setEditingMessageIndex] = useState<number | null>(null);
   const [editedContent, setEditedContent] = useState('');
   const editTextareaRef = useRef<HTMLTextAreaElement>(null);
@@ -330,6 +471,7 @@ export default function Home() {
         const loadedMessages: Message[] = [];
         data.forEach((conv: any) => {
           const message: Message = {
+            id: conv.id, // Inclure l'ID de la BDD
             role: conv.role as 'user' | 'assistant',
             content: conv.content
           };
@@ -355,7 +497,7 @@ export default function Home() {
     }
   };
 
-  const createNewProject = async (title: string, description: string, projectType: 'memoir' | 'chatbot' = 'memoir') => {
+  const createNewProject = async (title: string, description: string, projectType: ProjectType = 'chatbot') => {
     try {
       const res = await fetch('/api/projects', {
         method: 'POST',
@@ -366,8 +508,10 @@ export default function Home() {
       setProjects([...projects, newProject]);
       setSelectedProject(newProject);
       setShowNewProjectModal(false);
+      showToast('success', `✅ Projet "${title}" créé avec succès !`);
     } catch (error) {
       console.error('Erreur:', error);
+      showToast('error', '❌ Erreur lors de la création du projet');
     }
   };
 
@@ -537,13 +681,171 @@ export default function Home() {
     setUploadedImages(uploadedImages.filter((_, i) => i !== index));
   };
 
-  const deleteMessage = (index: number) => {
+  const removeFile = (index: number) => {
+    setUploadedFiles(uploadedFiles.filter((_, i) => i !== index));
+  };
+
+  // Fonction pour gérer l'upload de fichiers PDF et autres documents
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (!files) return;
+
+    const newFiles: {name: string, type: string, content: string}[] = [];
+    
+    for (let i = 0; i < files.length; i++) {
+      const file = files[i];
+      const fileType = file.type;
+      
+      // Gérer les PDFs
+      if (fileType === 'application/pdf') {
+        showToast('info', `📄 Extraction du texte du PDF "${file.name}" en cours...`);
+        
+        try {
+          // Créer un FormData pour envoyer le PDF à l'API
+          const formData = new FormData();
+          formData.append('file', file);
+          
+          // Appeler l'API pour extraire le texte
+          const response = await fetch('/api/parse-pdf', {
+            method: 'POST',
+            body: formData
+          });
+          
+          const result = await response.json();
+          
+          if (result.success && result.text) {
+            // Vérifier si le texte extrait est de mauvaise qualité (trop de caractères bizarres)
+            const strangeCharsRatio = (result.text.match(/[^\w\sàâäéèêëïîôùûçÀÂÄÉÈÊËÏÎÔÙÛÇ€%.,;:!?()\-'"]/g) || []).length / result.text.length;
+            
+            if (strangeCharsRatio > 0.3 || result.text.trim().length < 100) {
+              // Extraction de mauvaise qualité
+              const pdfInfo = `📄 DOCUMENT PDF: ${file.name}
+Taille: ${Math.round(file.size / 1024)} KB
+Nombre de pages: ${result.numPages}
+
+⚠️ **ATTENTION**: Ce PDF utilise des polices personnalisées qui rendent l'extraction de texte impossible.
+
+**Solutions possibles:**
+1. Convertir le PDF en format texte standard (File > Export as Text depuis un lecteur PDF)
+2. Utiliser un service OCR en ligne (si c'est un PDF scanné)
+3. Copier-coller manuellement le texte depuis le PDF
+
+**Ce que je peux faire:**
+- Répondre à des questions générales sur le marketing digital
+- T'aider à reformuler du contenu que tu me fournis
+- Créer du contenu similaire si tu me décris le sujet
+
+Désolé pour ce désagrément ! Les PDFs avec polices personnalisées sont très difficiles à lire automatiquement. 😔`;
+              
+              newFiles.push({
+                name: file.name,
+                type: 'pdf',
+                content: pdfInfo
+              });
+              setUploadedFiles(prev => [...prev, ...newFiles]);
+              showToast('warning', `⚠️ PDF "${file.name}": Extraction impossible (polices personnalisées)`);
+            } else {
+              // Texte extrait avec succès
+              const pdfContent = `📄 DOCUMENT PDF: ${file.name}
+Taille: ${Math.round(file.size / 1024)} KB
+Nombre de pages: ${result.numPages}
+
+══════════════════════════════════════════════════════════════
+CONTENU COMPLET DU PDF:
+══════════════════════════════════════════════════════════════
+
+${result.text}
+
+══════════════════════════════════════════════════════════════
+
+Ce document PDF a été analysé et son contenu textuel complet est ci-dessus. L'utilisateur veut que tu l'analyses. Réponds directement à sa question concernant ce document.`;
+              
+              newFiles.push({
+                name: file.name,
+                type: 'pdf',
+                content: pdfContent
+              });
+              setUploadedFiles(prev => [...prev, ...newFiles]);
+              showToast('success', `✅ PDF "${file.name}" lu avec succès ! ${result.numPages} page(s) extraite(s).`);
+            }
+          } else {
+            // Échec de l'extraction, fallback sur les métadonnées
+            const pdfInfo = `📄 DOCUMENT PDF: ${file.name}\nTaille: ${Math.round(file.size / 1024)} KB\n\n⚠️ Le texte n'a pas pu être extrait de ce PDF. Il pourrait s'agir d'un PDF image, protégé, ou avec des polices personnalisées.`;
+            
+            newFiles.push({
+              name: file.name,
+              type: 'pdf',
+              content: pdfInfo
+            });
+            setUploadedFiles(prev => [...prev, ...newFiles]);
+            showToast('warning', `⚠️ PDF "${file.name}" ajouté mais le texte n'a pas pu être extrait.`);
+          }
+        } catch (error) {
+          console.error('Erreur extraction PDF:', error);
+          showToast('error', `❌ Erreur lors de l'extraction du PDF`);
+        }
+      }
+      // Gérer les fichiers texte
+      else if (fileType === 'text/plain' || fileType === 'text/markdown' || file.name.endsWith('.txt') || file.name.endsWith('.md')) {
+        const reader = new FileReader();
+        reader.onload = (event) => {
+          if (event.target?.result) {
+            newFiles.push({
+              name: file.name,
+              type: 'text',
+              content: event.target.result as string
+            });
+            setUploadedFiles(prev => [...prev, ...newFiles]);
+            showToast('success', `📝 Fichier "${file.name}" lu avec succès !`);
+          }
+        };
+        reader.readAsText(file);
+      }
+      // Images (utiliser la fonction existante)
+      else if (fileType.startsWith('image/')) {
+        const reader = new FileReader();
+        reader.onload = (event) => {
+          if (event.target && event.target.result) {
+            setUploadedImages(prev => [...prev, event.target!.result as string]);
+            showToast('success', `🖼️ Image "${file.name}" ajoutée !`);
+          }
+        };
+        reader.readAsDataURL(file);
+      }
+      else {
+        showToast('warning', `⚠️ Type de fichier non supporté: ${file.name}`);
+      }
+    }
+    
+    if (newFiles.length > 0) {
+      setUploadedFiles(prev => [...prev, ...newFiles]);
+    }
+  };
+
+  const deleteMessage = async (index: number) => {
+    const messageToDelete = messages[index];
+    
     showConfirm(
       '🗑️ Supprimer le message',
       'Êtes-vous sûr de vouloir supprimer ce message ?',
-      () => {
+      async () => {
+        // Supprimer de l'interface
         setMessages(messages.filter((_, i) => i !== index));
-        showToast('success', '✅ Message supprimé');
+        
+        // Supprimer de la BDD si le message a un ID
+        if (messageToDelete.id) {
+          try {
+            await fetch(`/api/delete-message?id=${messageToDelete.id}`, {
+              method: 'DELETE',
+            });
+            showToast('success', '✅ Message supprimé définitivement');
+          } catch (error) {
+            console.error('Erreur suppression BDD:', error);
+            showToast('warning', '⚠️ Message supprimé de l\'interface uniquement');
+          }
+        } else {
+          showToast('success', '✅ Message supprimé');
+        }
       },
       'danger',
       'Supprimer',
@@ -603,10 +905,16 @@ export default function Home() {
         
         const imageModificationPatterns = [
           /^(je veux|j'aimerais) qu(e|')il (porte|ait|soit)/i,
+          /^habille[-\s]*(le|la|lui)?/i,
+          /^donne[-\s]*(lui|y)?/i,
           /^ajoute[-\s]*(lui|y|ses)?\s*(un|une|des|le|la|les)?/i,
+          /^mets[-\s]*(le|la|lui)?\s+(dans|sur|à|en|au|aux|un|une|des)/i, // Changement de lieu ET vêtement
+          /^enlève[-\s]*(lui|y)?/i,
+          /^retire[-\s]*(lui|y)?/i,
+          /^remplace[-\s]/i,
+          /^avec (un|une|des)/i,
           /^modifie[-\s]/i,
           /^change[-\s]/i,
-          /^mets[-\s]*(lui|y)?\s*(un|une|des)/i,
           /^mais avec/i,
           /^plutôt avec/i,
           /^refais[-\s]*(le|la|les)?(\s+avec)?/i,
@@ -619,27 +927,67 @@ export default function Home() {
           // Régénérer l'image avec le nouveau contenu
           showToast('info', '🎨 Régénération de l\'image...');
           
-          // Extraire le prompt
-          let imagePromptExtracted = editedContent
-            .replace(/g[eé]n[eè]re[-\s]*(moi|nous)?\s*(une?)?\s*image\s*(de|du|d')?/gi, '')
-            .replace(/cr[eé][eé][-\s]*(moi|nous)?\s*(une?)?\s*image\s*(de|du|d')?/gi, '')
-            .replace(/^ajoute[-\s]*(lui|y|ses)?\s*/gi, '')
-            .trim();
+          // Extraire le prompt avec la même logique que handleSend
+          let imagePromptExtracted = '';
           
-          if (!imagePromptExtracted) {
-            imagePromptExtracted = editedContent;
-          }
-          
-          // Si c'est une modification, chercher l'image précédente pour contexte
-          const previousImageIndex = editingMessageIndex - 2;
-          if (isModificationRequest && previousImageIndex >= 0) {
-            const prevUserMsg = updatedMessages[previousImageIndex];
-            if (prevUserMsg && prevUserMsg.role === 'user') {
-              const cleanPrev = prevUserMsg.content
-                .replace(/g[eé]n[eè]re[-\s]*(moi|nous)?\s*(une?)?\s*image\s*(de|du|d')?/gi, '')
-                .trim();
-              imagePromptExtracted = `${cleanPrev}, ${imagePromptExtracted}`;
+          if (isModificationRequest) {
+            // Chercher l'image précédente dans l'historique
+            let previousPrompt = '';
+            for (let i = editingMessageIndex - 1; i >= 0; i--) {
+              const msg = updatedMessages[i];
+              if (msg.role === 'assistant' && msg.images && msg.images.length > 0) {
+                if (i > 0 && updatedMessages[i - 1].role === 'user') {
+                  previousPrompt = updatedMessages[i - 1].content;
+                  console.log('🔍 [Edit] Trouvé prompt précédent à index', i - 1, ':', previousPrompt);
+                  break;
+                }
+              }
             }
+            
+            if (!previousPrompt) {
+              console.warn('⚠️ [Edit] Prompt précédent introuvable');
+              previousPrompt = editedContent;
+            }
+            
+            // Nettoyer le prompt précédent
+            const cleanPreviousPrompt = previousPrompt
+              .replace(/g[eé]n[eè]re[-\s]*(moi|nous)?\s*(une?)?\s*image\s*(de|du|d')?/gi, '')
+              .replace(/cr[eé][eé][-\s]*(moi|nous)?\s*(une?)?\s*image\s*(de|du|d')?/gi, '')
+              .replace(/fais[-\s]*(moi|nous)?\s*(une?)?\s*image\s*(de|du|d')?/gi, '')
+              .replace(/dessine[-\s]*(moi|nous)?\s*/gi, '')
+              .trim();
+            
+            // Détecter le type de modification
+            const isLocationChange = /^(mets|met)[-\s]*(le|la|lui)?\s+(dans|sur|à|en|au|aux)/i.test(editedContent);
+            const isClothingChange = /^(habille|donne|ajoute|mets)[-\s]*(le|la|lui)?\s+(un|une|des)/i.test(editedContent);
+            
+            if (isLocationChange) {
+              const cleanModification = editedContent.replace(/^(mets|met)[-\s]*(le|la|lui)?\s+/i, '').trim();
+              const locationMatch = cleanPreviousPrompt.match(/^(.+?)\s+(dans|sur|à|en|au|aux|devant|derrière|entre)\s+/i);
+              const baseSubject = locationMatch ? locationMatch[1] : cleanPreviousPrompt;
+              imagePromptExtracted = `${baseSubject} ${cleanModification}`.trim();
+              console.log('🔍 [Edit] CHANGEMENT DE LIEU:', imagePromptExtracted);
+            } else if (isClothingChange) {
+              const cleanModification = editedContent.replace(/^(habille|donne|ajoute|mets)[-\s]*(le|la|lui)?\s*/i, 'portant ').trim();
+              imagePromptExtracted = `${cleanPreviousPrompt}, ${cleanModification}`.trim();
+              console.log('🔍 [Edit] CHANGEMENT DE VÊTEMENT:', imagePromptExtracted);
+            } else {
+              imagePromptExtracted = `${cleanPreviousPrompt}, ${editedContent}`.trim();
+              console.log('🔍 [Edit] AUTRE MODIFICATION:', imagePromptExtracted);
+            }
+          } else {
+            // Demande directe
+            imagePromptExtracted = editedContent
+              .replace(/g[eé]n[eè]re[-\s]*(moi|nous)?\s*(une?)?\s*image\s*(de|du|d')?/gi, '')
+              .replace(/cr[eé][eé][-\s]*(moi|nous)?\s*(une?)?\s*image\s*(de|du|d')?/gi, '')
+              .replace(/fais[-\s]*(moi|nous)?\s*(une?)?\s*image\s*(de|du|d')?/gi, '')
+              .replace(/dessine[-\s]*(moi|nous)?\s*/gi, '')
+              .trim();
+            
+            if (!imagePromptExtracted) {
+              imagePromptExtracted = editedContent;
+            }
+            console.log('🔍 [Edit] GÉNÉRATION DIRECTE:', imagePromptExtracted);
           }
           
           setIsGeneratingImage(true);
@@ -715,14 +1063,42 @@ export default function Home() {
     setEditedContent('');
   };
 
-  const clearConversation = () => {
+  const clearConversation = async () => {
     showConfirm(
       '🗑️ Vider la conversation',
       'Êtes-vous sûr de vouloir supprimer toute la conversation ? Cette action est irréversible.',
-      () => {
+      async () => {
+        // Supprimer tous les messages de la base de données
+        if (selectedProject) {
+          try {
+            console.log('🗑️ Suppression de', messages.length, 'messages...');
+            
+            // Supprimer tous les messages ayant des IDs
+            const messagesToDelete = messages.filter(msg => msg.id);
+            console.log('🗑️ Messages avec ID à supprimer:', messagesToDelete.length);
+            
+            if (messagesToDelete.length > 0) {
+              const deletePromises = messagesToDelete.map(msg => {
+                console.log('🗑️ Suppression du message ID:', msg.id);
+                return fetch(`/api/delete-message?id=${msg.id}`, { method: 'DELETE' });
+              });
+              
+              const results = await Promise.all(deletePromises);
+              console.log('✅ Résultats suppression:', results.length, 'requêtes effectuées');
+            } else {
+              console.log('⚠️ Aucun message avec ID à supprimer');
+            }
+          } catch (error) {
+            console.error('❌ Erreur lors de la suppression des messages:', error);
+            showToast('error', '❌ Erreur lors de la suppression');
+            return; // Ne pas vider l'interface si erreur
+          }
+        }
+        
+        // Vider l'interface
         setMessages([]);
         setUploadedImages([]);
-        showToast('success', '✅ Conversation effacée');
+        showToast('success', '✅ Conversation effacée définitivement');
       },
       'danger',
       'Vider',
@@ -1295,7 +1671,28 @@ export default function Home() {
   };
 
   const sendMessage = async () => {
-    if ((!inputMessage.trim() && uploadedImages.length === 0) || !selectedProject || isGenerating) return;
+    if ((!inputMessage.trim() && uploadedImages.length === 0 && uploadedFiles.length === 0) || !selectedProject || isGenerating) return;
+
+    // Préparer le message avec le contenu des fichiers
+    let finalMessage = inputMessage;
+    if (uploadedFiles.length > 0) {
+      const filesContent = uploadedFiles.map(file => {
+        if (file.type === 'pdf') {
+          return `\n\n📄 **${file.content}**\n\n**Question de l'utilisateur concernant ce document:** ${inputMessage}`;
+        } else if (file.type === 'image') {
+          return `\n\n🖼️ **Image: ${file.name}**\n${file.content}`;
+        } else {
+          return `\n\n📄 **Fichier: ${file.name}**\n\`\`\`\n${file.content}\n\`\`\``;
+        }
+      }).join('\n');
+      
+      // Pour les PDFs, le message utilisateur est déjà inclus dans filesContent
+      if (uploadedFiles.some(f => f.type === 'pdf')) {
+        finalMessage = filesContent;
+      } else {
+        finalMessage = `${inputMessage}${filesContent}`;
+      }
+    }
 
     // 🎨 Détecter automatiquement les demandes de génération d'images
     const imageGenerationPatterns = [
@@ -1310,15 +1707,21 @@ export default function Home() {
     // Patterns de modification d'image (suite à une génération) - TRÈS SPÉCIFIQUES
     const imageModificationPatterns = [
       /^(je veux|j'aimerais) qu(e|')il (porte|ait|soit)/i, // "je veux qu'il porte"
+      /^habille[-\s]*(le|la|lui)?/i, // "habille-lui", "habille le"
+      /^donne[-\s]*(lui|y)?/i, // "donne-lui des lunettes"
       /^ajoute[-\s]*(lui|y)?\s*(un|une|des)/i, // "ajoute-lui des lunettes"
       /^modifie[-\s]/i, // "modifie..."
       /^change[-\s]/i, // "change..."
       /^mets[-\s]*(lui|y)?\s*(un|une|des)/i, // "mets-lui des lunettes"
+      /^enlève[-\s]*(lui|y)?/i, // "enlève-lui..."
+      /^retire[-\s]*(lui|y)?/i, // "retire..."
+      /^remplace[-\s]/i, // "remplace..."
       /^mais avec/i, // "mais avec..."
       /^plutôt avec/i, // "plutôt avec..."
+      /^avec (un|une|des)/i, // "avec un costume"
       /^refais[-\s]*(le|la|les)?(\s+avec)?/i, // "refais-le avec..."
       /^maintenant avec/i, // "maintenant avec..."
-      /^avec (un|une|des|le|la|les)\s+\w+\s+(de plus|en plus|aussi)/i // "avec des lunettes en plus"
+      /^(un|une|des)\s+\w+\s+(de plus|en plus|aussi)/i // "des lunettes en plus"
     ];
 
     // Vérifier si le dernier message de l'assistant était une génération d'image
@@ -1369,11 +1772,32 @@ export default function Home() {
       let imagePromptExtracted = '';
       
       if (isImageModification && wasLastMessageAnImage) {
-        // C'est une modification : on récupère le contexte de l'image précédente
-        const previousUserMessage = messages.length >= 2 ? messages[messages.length - 2] : null;
-        const previousPrompt = previousUserMessage && previousUserMessage.role === 'user' 
-          ? previousUserMessage.content 
-          : '';
+        // C'est une modification : on récupère le DERNIER PROMPT d'image utilisé
+        // Le dernier message est celui de l'assistant avec l'image (messages[length-1])
+        // Le prompt est dans le message utilisateur juste avant (messages[length-2])
+        let previousPrompt = '';
+        
+        if (messages.length >= 2) {
+          // Chercher en partant de la fin
+          for (let i = messages.length - 1; i >= 0; i--) {
+            const msg = messages[i];
+            // Trouver un message assistant avec une image
+            if (msg.role === 'assistant' && msg.images && msg.images.length > 0) {
+              // Le prompt est dans le message utilisateur juste avant
+              if (i > 0 && messages[i - 1].role === 'user') {
+                previousPrompt = messages[i - 1].content;
+                console.log('🔍 Trouvé prompt précédent à index', i - 1, ':', previousPrompt);
+                break;
+              }
+            }
+          }
+        }
+        
+        // Si pas trouvé, erreur
+        if (!previousPrompt) {
+          console.warn('⚠️ Impossible de trouver le prompt précédent, utilisation du message actuel');
+          previousPrompt = inputMessage;
+        }
         
         // Nettoyer le prompt précédent des mots-clés
         const cleanPreviousPrompt = previousPrompt
@@ -1383,10 +1807,60 @@ export default function Home() {
           .replace(/dessine[-\s]*(moi|nous)?\s*/gi, '')
           .trim();
         
-        // Combiner l'ancien prompt avec la modification
-        imagePromptExtracted = `${cleanPreviousPrompt}, ${inputMessage}`.trim();
+        // Détecter le type de modification
+        const isLocationChange = /^(mets|met)[-\s]*(le|la|lui)?\s+(dans|sur|à|en|au|aux)/i.test(inputMessage);
+        const isClothingChange = /^(habille|donne|ajoute|mets)[-\s]*(le|la|lui)?\s+(un|une|des)/i.test(inputMessage);
+        
+        console.log('🔍 Type de modification détecté:');
+        console.log('  - isLocationChange:', isLocationChange);
+        console.log('  - isClothingChange:', isClothingChange);
+        
+        let cleanModification = '';
+        
+        if (isLocationChange) {
+          // Changement de lieu : extraire le nouveau lieu
+          cleanModification = inputMessage
+            .replace(/^(mets|met)[-\s]*(le|la|lui)?\s+/i, '')
+            .trim();
+          
+          console.log('  - cleanPreviousPrompt:', cleanPreviousPrompt);
+          
+          // Extraire le sujet principal (tout avant le premier marqueur de lieu)
+          let baseSubject = cleanPreviousPrompt;
+          const locationMatch = cleanPreviousPrompt.match(/^(.+?)\s+(dans|sur|à|en|au|aux|devant|derrière|entre)\s+/i);
+          
+          console.log('  - locationMatch:', locationMatch);
+          
+          if (locationMatch) {
+            baseSubject = locationMatch[1]; // Ex: "batman" de "batman dans le jardin"
+            console.log('  - Sujet extrait via regex:', baseSubject);
+          } else {
+            // Pas de marqueur de lieu trouvé, prendre tout le prompt
+            baseSubject = cleanPreviousPrompt;
+            console.log('  - Aucun marqueur de lieu, utilisation du prompt complet:', baseSubject);
+          }
+          
+          console.log('  - cleanModification:', cleanModification);
+          
+          // IMPORTANT : Forcer la cohérence en ajoutant des descripteurs
+          imagePromptExtracted = `${baseSubject} ${cleanModification}, same character, same person, photorealistic, high quality, detailed`.trim();
+          console.log('  - ✅ Prompt final pour changement de lieu:', imagePromptExtracted);
+        } else if (isClothingChange) {
+          // Changement de vêtement/accessoire : on garde tout le contexte
+          cleanModification = inputMessage
+            .replace(/^(habille|donne|ajoute|mets)[-\s]*(le|la|lui)?\s*/i, 'wearing ')
+            .trim();
+          imagePromptExtracted = `${cleanPreviousPrompt}, ${cleanModification}, same character, same face, same person, photorealistic`.trim();
+          console.log('  - ✅ Prompt final pour changement de vêtement:', imagePromptExtracted);
+        } else {
+          // Autre modification : on combine intelligemment
+          cleanModification = inputMessage.trim();
+          imagePromptExtracted = `${cleanPreviousPrompt}, ${cleanModification}, same character, consistent style`.trim();
+          console.log('  - ✅ Prompt final (autre):', imagePromptExtracted);
+        }
       } else {
         // Demande directe : extraire le prompt après les mots-clés
+        console.log('🔍 Génération directe (pas de modification)');
         imagePromptExtracted = inputMessage
           .replace(/g[eé]n[eè]re[-\s]*(moi|nous)?\s*(une?)?\s*image\s*(de|du|d')?/gi, '')
           .replace(/cr[eé][eé][-\s]*(moi|nous)?\s*(une?)?\s*image\s*(de|du|d')?/gi, '')
@@ -1402,29 +1876,116 @@ export default function Home() {
         imagePromptExtracted = inputMessage;
       }
 
+      console.log('🚀 ====== ENVOI À L\'API ======');
+      console.log('📤 Prompt final envoyé:', imagePromptExtracted);
+      console.log('🎲 Seed:', Math.floor(Math.random() * 10000));
+      
       setIsGeneratingImage(true);
       showToast('info', '🎨 Génération de l\'image en cours...');
       
-      // Générer l'image avec les messages à jour
+      // Ajouter un message temporaire "Génération en cours..."
+      const generatingMessage: Message = {
+        role: 'assistant',
+        content: '🎨 Génération de l\'image en cours...'
+      };
+      setMessages([...updatedMessages, generatingMessage]);
+      
+      // Choisir l'API selon le type de demande
       try {
-        const response = await fetch('/api/generate-image', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ 
-            prompt: imagePromptExtracted,
-            seed: Math.floor(Math.random() * 10000)
-          }),
-        });
-
-        const data = await response.json();
+        let response;
+        let data;
+        const seed = Math.floor(Math.random() * 10000);
+        
+        // Si c'est une modification ET qu'on a l'image précédente, utiliser l'API de modification
+        if (isImageModification && messages.length > 0) {
+          // Trouver la dernière image
+          let lastImage = null;
+          for (let i = messages.length - 1; i >= 0; i--) {
+            if (messages[i].images && messages[i].images.length > 0) {
+              lastImage = messages[i].images[0];
+              console.log('🖼️ Image de base trouvée pour modification');
+              break;
+            }
+          }
+          
+          // Essayer l'API de modification si l'image existe
+          if (lastImage) {
+            console.log('🔄 Tentative de modification via Cloudflare img2img...');
+            response = await fetch('/api/modify-image', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                prompt: imagePromptExtracted,
+                imageBase64: lastImage
+              }),
+            });
+            
+            data = await response.json();
+            
+            // Si Cloudflare n'est pas configuré ou échoue, fallback sur génération
+            if (!data.success || data.useFallback) {
+              console.log('⚠️ Fallback sur génération simple...');
+              response = await fetch('/api/generate-image', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ 
+                  prompt: imagePromptExtracted,
+                  seed: seed
+                }),
+              });
+              data = await response.json();
+            }
+          } else {
+            // Pas d'image trouvée, génération normale
+            console.log('⚠️ Aucune image précédente, génération normale');
+            response = await fetch('/api/generate-image', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ 
+                prompt: imagePromptExtracted,
+                seed: seed
+              }),
+            });
+            data = await response.json();
+          }
+        } else {
+          // Génération normale (pas une modification)
+          response = await fetch('/api/generate-image', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ 
+              prompt: imagePromptExtracted,
+              seed: seed
+            }),
+          });
+          data = await response.json();
+        }
+        
+        console.log('📥 Réponse API génération:', data);
 
         if (data.success && data.imageUrl) {
+          console.log('✅ Image générée avec succès:', data.imageUrl.substring(0, 100) + '...');
+          
           const imageMessage: Message = {
             role: 'assistant',
-            content: `🎨 Voici l'image générée !`,
+            content: isImageModification 
+              ? `🎨 Image modifiée selon votre demande !`
+              : `🎨 Voici l'image générée !`,
             images: [data.imageUrl]
           };
-          setMessages([...updatedMessages, imageMessage]);
+          
+          console.log('💬 Message image créé:', {
+            role: imageMessage.role,
+            content: imageMessage.content,
+            hasImages: !!imageMessage.images,
+            imageCount: imageMessage.images?.length,
+            imagePreview: imageMessage.images?.[0]?.substring(0, 50) + '...'
+          });
+          
+          // Remplacer le message "en cours" par l'image finale
+          const newMessages = [...updatedMessages, imageMessage];
+          console.log('� Nombre total de messages après ajout:', newMessages.length);
+          setMessages(newMessages);
           
           // Sauvegarder la réponse avec l'image dans la BDD
           if (selectedProject) {
@@ -1447,11 +2008,16 @@ export default function Home() {
             }
           }
         } else {
-          showToast('error', 'Erreur lors de la génération');
+          console.error('❌ Échec génération:', data);
+          showToast('error', 'Erreur lors de la génération: ' + (data.error || 'Raison inconnue'));
+          // Supprimer le message "en cours..."
+          setMessages(updatedMessages);
         }
       } catch (error) {
-        console.error('Erreur génération:', error);
+        console.error('❌ Erreur génération:', error);
         showToast('error', 'Erreur lors de la génération');
+        // Supprimer le message "en cours..."
+        setMessages(updatedMessages);
       } finally {
         setIsGeneratingImage(false);
       }
@@ -1461,7 +2027,7 @@ export default function Home() {
 
     const userMessage: Message = { 
       role: 'user', 
-      content: inputMessage || "Analyse cette image",
+      content: finalMessage || inputMessage || "Analyse cette image",
       images: uploadedImages.length > 0 ? [...uploadedImages] : undefined
     };
     setMessages([...messages, userMessage]);
@@ -1479,7 +2045,7 @@ export default function Home() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           projectId: selectedProject.id,
-          message: inputMessage || "Analyse cette image",
+          message: finalMessage || inputMessage || "Analyse cette image",
           chapterId: selectedChapter?.id,
           images: uploadedImages.length > 0 ? uploadedImages : undefined,
         }),
@@ -1487,6 +2053,7 @@ export default function Home() {
       });
       
       setUploadedImages([]); // Clear images after sending
+      setUploadedFiles([]); // Clear files after sending
 
       const reader = response.body?.getReader();
       const decoder = new TextDecoder();
@@ -1520,6 +2087,66 @@ export default function Home() {
 
       setMessages([...messages, userMessage, { role: 'assistant', content: fullContent }]);
       setStreamingContent('');
+      
+      // 🎨 AUTO-GÉNÉRATION : Si l'IA répond avec "🎨 Génération de l'image en cours...", générer automatiquement
+      if (fullContent.includes('🎨 Génération de l\'image en cours...') || 
+          fullContent.includes('🎨 Generation de l\'image en cours...')) {
+        
+        // Extraire le prompt de la demande utilisateur
+        const userPrompt = userMessage.content || '';
+        
+        // Générer l'image automatiquement
+        setIsGeneratingImage(true);
+        showToast('info', '🎨 Génération automatique de l\'image...');
+        
+        try {
+          const imageResponse = await fetch('/api/generate-image', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ 
+              prompt: userPrompt,
+              seed: Math.floor(Math.random() * 10000)
+            }),
+          });
+
+          const imageData = await imageResponse.json();
+
+          if (imageData.success && imageData.imageUrl) {
+            // Remplacer le message de l'assistant par un message avec l'image
+            const imageMessage: Message = {
+              role: 'assistant',
+              content: `🎨 Voici l'image générée !`,
+              images: [imageData.imageUrl]
+            };
+            setMessages([...messages, userMessage, imageMessage]);
+            
+            // Sauvegarder l'image dans la BDD
+            if (selectedProject) {
+              try {
+                await fetch('/api/save-message', {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({
+                    projectId: selectedProject.id,
+                    role: 'assistant',
+                    content: imageMessage.content,
+                    chapterId: selectedChapter?.id,
+                    images: [imageData.imageUrl]
+                  }),
+                });
+                showToast('success', '✨ Image générée automatiquement !');
+              } catch (error) {
+                console.error('❌ Erreur sauvegarde image:', error);
+              }
+            }
+          }
+        } catch (error) {
+          console.error('Erreur génération auto:', error);
+          showToast('error', 'Erreur lors de la génération automatique');
+        } finally {
+          setIsGeneratingImage(false);
+        }
+      }
       
       // Recharger les chapitres si nécessaire
       if (selectedChapter) {
@@ -1647,24 +2274,37 @@ export default function Home() {
               }`}
             >
               <div className="flex items-start justify-between">
-                <div className="flex-1">
-                  <div className="flex items-center gap-2 mb-1">
-                    <h3 className="text-white font-semibold">{project.title}</h3>
-                    {/* Badge Type de Projet */}
-                    {project.project_type === 'chatbot' ? (
-                      <span className="px-2 py-0.5 text-xs font-medium bg-blue-500/20 text-blue-300 border border-blue-500/30 rounded-full flex items-center gap-1">
-                        <Sparkles className="w-3 h-3" />
-                        Chatbot
+                <div className="flex-1 min-w-0">
+                  <h3 className="text-white font-semibold truncate mb-1.5">{project.title}</h3>
+                  
+                  {/* Badge Type de Projet - En dessous du titre */}
+                  {(() => {
+                    const projectTypeInfo = PROJECT_TYPES.find(t => t.id === (project.project_type || 'chatbot'));
+                    if (!projectTypeInfo) return null;
+                    
+                    const Icon = projectTypeInfo.icon;
+                    const colorClasses = {
+                      blue: 'bg-blue-500/20 text-blue-300 border-blue-500/30',
+                      purple: 'bg-purple-500/20 text-purple-300 border-purple-500/30',
+                      pink: 'bg-pink-500/20 text-pink-300 border-pink-500/30',
+                      orange: 'bg-orange-500/20 text-orange-300 border-orange-500/30',
+                      green: 'bg-green-500/20 text-green-300 border-green-500/30',
+                      indigo: 'bg-indigo-500/20 text-indigo-300 border-indigo-500/30',
+                      cyan: 'bg-cyan-500/20 text-cyan-300 border-cyan-500/30',
+                      teal: 'bg-teal-500/20 text-teal-300 border-teal-500/30',
+                      amber: 'bg-amber-500/20 text-amber-300 border-amber-500/30',
+                    };
+                    
+                    return (
+                      <span className={`inline-flex items-center gap-1 px-2 py-0.5 text-xs font-medium border rounded-full ${colorClasses[projectTypeInfo.color as keyof typeof colorClasses]}`}>
+                        <span className="text-xs">{projectTypeInfo.emoji}</span>
+                        <span>{projectTypeInfo.name}</span>
                       </span>
-                    ) : (
-                      <span className="px-2 py-0.5 text-xs font-medium bg-purple-500/20 text-purple-300 border border-purple-500/30 rounded-full flex items-center gap-1">
-                        <BookOpen className="w-3 h-3" />
-                        Mémoire
-                      </span>
-                    )}
-                  </div>
+                    );
+                  })()}
+                  
                   {project.description && (
-                    <p className="text-gray-400 text-sm mt-1">{project.description}</p>
+                    <p className="text-gray-400 text-sm mt-1.5 line-clamp-2">{project.description}</p>
                   )}
                 </div>
                 
@@ -1927,6 +2567,70 @@ export default function Home() {
                 </p>
               </div>
             </div>
+          ) : messages.length === 0 ? (
+            // Projet sélectionné mais vide - Afficher message d'accueil selon le type
+            <div className="flex items-center justify-center h-full">
+              <div className="max-w-2xl text-center px-6">
+                {(() => {
+                  const projectTypeInfo = PROJECT_TYPES.find(t => t.id === (selectedProject.project_type || 'chatbot'));
+                  if (!projectTypeInfo) return null;
+                  
+                  const Icon = projectTypeInfo.icon;
+                  
+                  return (
+                    <motion.div
+                      initial={{ opacity: 0, scale: 0.9 }}
+                      animate={{ opacity: 1, scale: 1 }}
+                      className="space-y-6"
+                    >
+                      <div className={`inline-flex items-center justify-center w-20 h-20 rounded-full bg-gradient-to-br ${projectTypeInfo.gradient} mb-4`}>
+                        <Icon className="w-10 h-10 text-white" />
+                      </div>
+                      
+                      <h2 className="text-3xl font-bold text-white">
+                        {selectedProject.title}
+                      </h2>
+                      
+                      {selectedProject.description && (
+                        <p className="text-lg text-gray-300">
+                          {selectedProject.description}
+                        </p>
+                      )}
+                      
+                      <div className="bg-white/5 backdrop-blur-sm rounded-xl p-6 border border-white/10">
+                        <h3 className="text-xl font-semibold text-white mb-3 flex items-center gap-2">
+                          <span>{projectTypeInfo.emoji}</span>
+                          <span>{projectTypeInfo.name}</span>
+                        </h3>
+                        <p className="text-gray-300 mb-4">
+                          {projectTypeInfo.description}
+                        </p>
+                        
+                        {projectTypeInfo.features && projectTypeInfo.features.length > 0 && (
+                          <div className="space-y-2 text-left">
+                            <p className="text-sm font-semibold text-purple-300">
+                              ✨ Fonctionnalités :
+                            </p>
+                            <ul className="text-sm text-gray-400 space-y-1">
+                              {projectTypeInfo.features.map((feature, idx) => (
+                                <li key={idx} className="flex items-start gap-2">
+                                  <span className="text-purple-400">•</span>
+                                  <span>{feature}</span>
+                                </li>
+                              ))}
+                            </ul>
+                          </div>
+                        )}
+                      </div>
+                      
+                      <p className="text-gray-400 text-sm">
+                        💬 Commencez à taper votre message ci-dessous pour démarrer !
+                      </p>
+                    </motion.div>
+                  );
+                })()}
+              </div>
+            </div>
           ) : (
             <>
               {messages.map((msg, idx) => (
@@ -2172,6 +2876,34 @@ export default function Home() {
               </div>
             )}
             
+            {/* Fichiers uploadés (PDF, TXT, etc.) */}
+            {uploadedFiles.length > 0 && (
+              <div className="mb-3 md:mb-4 flex flex-wrap gap-2">
+                {uploadedFiles.map((file, idx) => (
+                  <div key={idx} className="relative group">
+                    <div className="flex items-center gap-2 px-3 py-2 bg-blue-500/10 border border-blue-500/30 rounded-lg hover:bg-blue-500/20 transition-colors">
+                      <File className="w-5 h-5 text-blue-400" />
+                      <div className="flex flex-col">
+                        <span className="text-sm font-medium text-white truncate max-w-[150px]" title={file.name}>
+                          {file.name}
+                        </span>
+                        <span className="text-xs text-gray-400">
+                          {file.type === 'pdf' ? 'PDF' : 'Texte'}
+                        </span>
+                      </div>
+                      <button
+                        onClick={() => removeFile(idx)}
+                        className="ml-2 bg-red-500 text-white rounded-full p-1 hover:bg-red-600 transition-colors"
+                        title="Retirer"
+                      >
+                        <X className="w-3 h-3" />
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+            
             {/* Générateur d'images IA */}
             <div className="mb-3 flex gap-2">
               <input
@@ -2198,52 +2930,109 @@ export default function Home() {
               </button>
             </div>
 
-            <div className="flex gap-2">
-              <input
-                type="file"
-                ref={fileInputRef}
-                onChange={handleImageUpload}
-                accept="image/*"
-                multiple
-                className="hidden"
-              />
-              <button
-                onClick={() => fileInputRef.current?.click()}
-                disabled={isGenerating}
-                className="px-3 py-3 bg-white/10 border border-white/20 rounded-xl text-white hover:bg-white/20 disabled:opacity-50 transition-colors flex-shrink-0"
-                title="Ajouter des images"
-              >
-                <ImageIcon className="w-5 h-5" />
-              </button>
-              <input
-                type="text"
-                value={inputMessage}
-                onChange={(e) => setInputMessage(e.target.value)}
-                onKeyPress={(e) => e.key === 'Enter' && !e.shiftKey && sendMessage()}
-                onPaste={handlePaste}
-                placeholder="Tapez votre message ou collez une image (Ctrl+V)..."
-                className="flex-1 px-3 py-3 bg-white/10 border border-white/20 rounded-xl text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-purple-500 text-sm min-w-0"
-                disabled={isGenerating}
-                title="Vous pouvez coller des images directement avec Ctrl+V (ou Cmd+V sur Mac)"
-              />
-              {isGenerating ? (
-                <button
-                  onClick={stopGeneration}
-                  className="px-3 py-3 bg-red-500 hover:bg-red-600 text-white rounded-xl transition-colors flex items-center justify-center font-medium flex-shrink-0 min-w-[50px]"
-                  title="Arrêter"
-                >
-                  <XCircle className="w-5 h-5" />
-                </button>
-              ) : (
-                <button
-                  onClick={sendMessage}
-                  disabled={!inputMessage.trim() && uploadedImages.length === 0}
-                  className="px-3 py-3 bg-gradient-to-r from-purple-500 to-pink-500 text-white rounded-xl hover:opacity-90 disabled:opacity-50 transition-opacity flex items-center justify-center flex-shrink-0 min-w-[50px]"
-                  title="Envoyer"
-                >
-                  <Send className="w-5 h-5" />
-                </button>
+            <div className="space-y-2">
+              {/* Indicateurs contextuels selon le type de projet */}
+              {selectedProject?.project_type === 'social-media' && inputMessage && (
+                <div className="flex items-center justify-between px-3 py-2 bg-white/5 rounded-lg border border-white/10">
+                  <span className="text-sm text-gray-400">Caractères:</span>
+                  <span className={`text-sm font-medium ${inputMessage.length > 280 ? 'text-red-400' : inputMessage.length > 240 ? 'text-orange-400' : 'text-green-400'}`}>
+                    {inputMessage.length} / 280 {inputMessage.length > 280 && '(Twitter dépassé)'}
+                  </span>
+                </div>
               )}
+              
+              {selectedProject?.project_type === 'image-studio' && (
+                <div className="px-3 py-2 bg-gradient-to-r from-pink-500/10 to-purple-500/10 rounded-lg border border-pink-500/20">
+                  <p className="text-sm text-pink-300 flex items-center gap-2">
+                    <Palette className="w-4 h-4" />
+                    Mode Studio: Décrivez l'image que vous souhaitez créer ou modifier
+                  </p>
+                </div>
+              )}
+              
+              {selectedProject?.project_type === 'prompt-generator' && (
+                <div className="px-3 py-2 bg-gradient-to-r from-amber-500/10 to-orange-500/10 rounded-lg border border-amber-500/20">
+                  <p className="text-sm text-amber-300 flex items-center gap-2">
+                    <Target className="w-4 h-4" />
+                    Collez votre prompt à améliorer ou décrivez ce que vous voulez créer
+                  </p>
+                </div>
+              )}
+              
+              <div className="flex gap-2">
+                {/* Input caché pour les images */}
+                <input
+                  type="file"
+                  ref={fileInputRef}
+                  onChange={handleImageUpload}
+                  accept="image/*"
+                  multiple
+                  className="hidden"
+                />
+                {/* Input caché pour les fichiers (PDF, texte, etc.) */}
+                <input
+                  type="file"
+                  ref={pdfInputRef}
+                  onChange={handleFileUpload}
+                  accept=".pdf,.txt,.md,text/plain,application/pdf"
+                  multiple
+                  className="hidden"
+                />
+                {/* Bouton pour images */}
+                <button
+                  onClick={() => fileInputRef.current?.click()}
+                  disabled={isGenerating}
+                  className="px-3 py-3 bg-white/10 border border-white/20 rounded-xl text-white hover:bg-white/20 disabled:opacity-50 transition-colors flex-shrink-0"
+                  title="Ajouter des images"
+                >
+                  <ImageIcon className="w-5 h-5" />
+                </button>
+                {/* Bouton pour fichiers PDF/texte */}
+                <button
+                  onClick={() => pdfInputRef.current?.click()}
+                  disabled={isGenerating}
+                  className="px-3 py-3 bg-white/10 border border-white/20 rounded-xl text-white hover:bg-white/20 disabled:opacity-50 transition-colors flex-shrink-0"
+                  title="Ajouter des fichiers (PDF, TXT)"
+                >
+                  <Paperclip className="w-5 h-5" />
+                </button>
+                <input
+                  type="text"
+                  value={inputMessage}
+                  onChange={(e) => setInputMessage(e.target.value)}
+                  onKeyPress={(e) => e.key === 'Enter' && !e.shiftKey && sendMessage()}
+                  onPaste={handlePaste}
+                  placeholder={
+                    selectedProject?.project_type === 'image-studio' ? "Décrivez l'image à créer..." :
+                    selectedProject?.project_type === 'social-media' ? "Rédigez votre post (max 280 car.)..." :
+                    selectedProject?.project_type === 'emails' ? "Décrivez l'email à rédiger..." :
+                    selectedProject?.project_type === 'translation' ? "Texte à traduire..." :
+                    selectedProject?.project_type === 'prompt-generator' ? "Collez votre prompt à améliorer..." :
+                    "Tapez votre message, collez une image (Ctrl+V) ou ajoutez un PDF..."
+                  }
+                  className="flex-1 px-3 py-3 bg-white/10 border border-white/20 rounded-xl text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-purple-500 text-sm min-w-0"
+                  disabled={isGenerating}
+                  title="Vous pouvez coller des images directement avec Ctrl+V (ou Cmd+V sur Mac)"
+                />
+                {isGenerating ? (
+                  <button
+                    onClick={stopGeneration}
+                    className="px-3 py-3 bg-red-500 hover:bg-red-600 text-white rounded-xl transition-colors flex items-center justify-center font-medium flex-shrink-0 min-w-[50px]"
+                    title="Arrêter"
+                  >
+                    <XCircle className="w-5 h-5" />
+                  </button>
+                ) : (
+                  <button
+                    onClick={sendMessage}
+                    disabled={!inputMessage.trim() && uploadedImages.length === 0}
+                    className="px-3 py-3 bg-gradient-to-r from-purple-500 to-pink-500 text-white rounded-xl hover:opacity-90 disabled:opacity-50 transition-opacity flex items-center justify-center flex-shrink-0 min-w-[50px]"
+                    title="Envoyer"
+                  >
+                    <Send className="w-5 h-5" />
+                  </button>
+                )}
+              </div>
             </div>
           </div>
         )}
@@ -2292,7 +3081,7 @@ export default function Home() {
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50"
+            className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4"
             onClick={() => setShowNewProjectModal(false)}
           >
             <motion.div
@@ -2300,9 +3089,9 @@ export default function Home() {
               animate={{ scale: 1, opacity: 1 }}
               exit={{ scale: 0.9, opacity: 0 }}
               onClick={(e) => e.stopPropagation()}
-              className="bg-slate-800 p-8 rounded-2xl max-w-md w-full mx-4"
+              className="bg-slate-800 p-6 md:p-8 rounded-2xl w-full max-w-5xl mx-auto max-h-[90vh] overflow-y-auto"
             >
-              <h2 className="text-2xl font-bold text-white mb-6">Nouveau Projet</h2>
+              <h2 className="text-2xl md:text-3xl font-bold text-white mb-6">✨ Nouveau Projet</h2>
               <form
                 onSubmit={(e) => {
                   e.preventDefault();
@@ -2310,68 +3099,71 @@ export default function Home() {
                   createNewProject(
                     formData.get('title') as string,
                     formData.get('description') as string,
-                    formData.get('projectType') as 'memoir' | 'chatbot'
+                    formData.get('projectType') as ProjectType
                   );
                 }}
               >
                 {/* Sélecteur de type de projet */}
                 <div className="mb-6">
-                  <label className="block text-sm font-medium text-gray-300 mb-3">
-                    Type de projet
+                  <label className="block text-sm md:text-base font-medium text-gray-300 mb-4">
+                    Choisissez le type de projet
                   </label>
-                  <div className="grid grid-cols-2 gap-3">
-                    <label className="relative cursor-pointer">
-                      <input
-                        type="radio"
-                        name="projectType"
-                        value="memoir"
-                        defaultChecked
-                        className="peer sr-only"
-                      />
-                      <div className="p-4 bg-white/5 border-2 border-white/20 rounded-lg hover:bg-white/10 transition-all peer-checked:border-purple-500 peer-checked:bg-purple-500/10">
-                        <div className="flex items-center gap-2 mb-2">
-                          <BookOpen className="w-5 h-5 text-purple-400" />
-                          <span className="font-semibold text-white">Mémoire</span>
-                        </div>
-                        <p className="text-xs text-gray-400">
-                          Assistant académique pour rédiger un mémoire structuré et cohérent
-                        </p>
-                      </div>
-                    </label>
-                    
-                    <label className="relative cursor-pointer">
-                      <input
-                        type="radio"
-                        name="projectType"
-                        value="chatbot"
-                        className="peer sr-only"
-                      />
-                      <div className="p-4 bg-white/5 border-2 border-white/20 rounded-lg hover:bg-white/10 transition-all peer-checked:border-blue-500 peer-checked:bg-blue-500/10">
-                        <div className="flex items-center gap-2 mb-2">
-                          <Sparkles className="w-5 h-5 text-blue-400" />
-                          <span className="font-semibold text-white">Chatbot</span>
-                        </div>
-                        <p className="text-xs text-gray-400">
-                          Assistant général pour répondre à toutes vos questions
-                        </p>
-                      </div>
-                    </label>
+                  <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3 md:gap-4 max-h-[50vh] overflow-y-auto pr-2 scrollbar-thin scrollbar-thumb-purple-500 scrollbar-track-slate-700">
+                    {PROJECT_TYPES.map((type) => {
+                      const Icon = type.icon;
+                      const colorClasses = {
+                        blue: 'peer-checked:border-blue-500 peer-checked:bg-blue-500/10 hover:border-blue-400/50',
+                        purple: 'peer-checked:border-purple-500 peer-checked:bg-purple-500/10 hover:border-purple-400/50',
+                        pink: 'peer-checked:border-pink-500 peer-checked:bg-pink-500/10 hover:border-pink-400/50',
+                        orange: 'peer-checked:border-orange-500 peer-checked:bg-orange-500/10 hover:border-orange-400/50',
+                        green: 'peer-checked:border-green-500 peer-checked:bg-green-500/10 hover:border-green-400/50',
+                        indigo: 'peer-checked:border-indigo-500 peer-checked:bg-indigo-500/10 hover:border-indigo-400/50',
+                        cyan: 'peer-checked:border-cyan-500 peer-checked:bg-cyan-500/10 hover:border-cyan-400/50',
+                        teal: 'peer-checked:border-teal-500 peer-checked:bg-teal-500/10 hover:border-teal-400/50',
+                        amber: 'peer-checked:border-amber-500 peer-checked:bg-amber-500/10 hover:border-amber-400/50',
+                        slate: 'peer-checked:border-slate-500 peer-checked:bg-slate-500/10 hover:border-slate-400/50',
+                        emerald: 'peer-checked:border-emerald-500 peer-checked:bg-emerald-500/10 hover:border-emerald-400/50',
+                      };
+                      
+                      return (
+                        <label key={type.id} className="relative cursor-pointer group">
+                          <input
+                            type="radio"
+                            name="projectType"
+                            value={type.id}
+                            defaultChecked={type.id === 'chatbot'}
+                            className="peer sr-only"
+                          />
+                          <div className={`p-4 md:p-5 bg-white/5 border-2 border-white/20 rounded-xl transition-all hover:scale-105 ${colorClasses[type.color as keyof typeof colorClasses]}`}>
+                            <div className="flex flex-col gap-2 mb-2">
+                              <span className="text-2xl md:text-3xl">{type.emoji}</span>
+                              <span className="font-semibold text-white text-sm md:text-base leading-tight">{type.name}</span>
+                            </div>
+                            <p className="text-xs md:text-sm text-gray-400 leading-snug">
+                              {type.description}
+                            </p>
+                          </div>
+                        </label>
+                      );
+                    })}
                   </div>
                 </div>
 
-                <input
-                  name="title"
-                  type="text"
-                  placeholder="Titre du projet"
-                  required
-                  className="w-full px-4 py-3 bg-white/10 border border-white/20 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-purple-500 mb-4"
-                />
-                <textarea
-                  name="description"
-                  placeholder="Description (optionnel)"
-                  rows={3}
-                  className="w-full px-4 py-3 bg-white/10 border border-white/20 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-purple-500 mb-6 resize-none"
-                />
+                <div className="space-y-4 mb-6">
+                  <input
+                    name="title"
+                    type="text"
+                    placeholder="Titre du projet"
+                    required
+                    className="w-full px-4 py-3 bg-white/10 border border-white/20 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-purple-500"
+                  />
+                  <textarea
+                    name="description"
+                    placeholder="Description (optionnel)"
+                    rows={3}
+                    className="w-full px-4 py-3 bg-white/10 border border-white/20 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-purple-500 resize-none"
+                  />
+                </div>
                 <div className="flex gap-3">
                   <button
                     type="button"
