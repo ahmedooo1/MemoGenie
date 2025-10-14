@@ -24,8 +24,8 @@ jobs:
     # - name: Build
     #   run: npm run build
 
-    - name: Generate Static Files
-      run: npm run generate
+    # - name: Generate Static Files
+    #   run: npm run generate
 
     - name: Deploy to Server
       uses: appleboy/ssh-action@master
