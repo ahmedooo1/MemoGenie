@@ -1461,7 +1461,7 @@ Ce document PDF a été analysé et son contenu textuel complet est ci-dessus. L
         const level = headerMatch[1].length;
         const titleText = headerMatch[2].trim();
         
-        let headingLevel = HeadingLevel.HEADING_1;
+  let headingLevel: (typeof HeadingLevel)[keyof typeof HeadingLevel] = HeadingLevel.HEADING_1;
         let spacing = { before: 400, after: 200 };
         
         if (level === 1) {
@@ -1623,6 +1623,7 @@ Ce document PDF a été analysé et son contenu textuel complet est ci-dessus. L
                   new Paragraph({
                     children: [
                       new ImageRun({
+                        type: 'jpg',
                         data: imageBuffer,
                         transformation: {
                           width: 500,
@@ -1637,8 +1638,9 @@ Ce document PDF a été analysé et son contenu textuel complet est ci-dessus. L
                 console.error('Erreur ajout image Word:', imgError);
                 sections.push(
                   new Paragraph({
-                    text: '[Image non disponible]',
-                    italics: true,
+                    children: [
+                      new TextRun({ text: '[Image non disponible]', italics: true }),
+                    ],
                     spacing: { after: 100 },
                   })
                 );
@@ -1899,10 +1901,11 @@ Ce document PDF a été analysé et son contenu textuel complet est ci-dessus. L
         // Si c'est une modification ET qu'on a l'image précédente, utiliser l'API de modification
         if (isImageModification && messages.length > 0) {
           // Trouver la dernière image
-          let lastImage = null;
+          let lastImage: string | null = null;
           for (let i = messages.length - 1; i >= 0; i--) {
-            if (messages[i].images && messages[i].images.length > 0) {
-              lastImage = messages[i].images[0];
+            const imgs = messages[i]?.images;
+            if (Array.isArray(imgs) && imgs.length > 0) {
+              lastImage = imgs[0] ?? null;
               console.log('🖼️ Image de base trouvée pour modification');
               break;
             }

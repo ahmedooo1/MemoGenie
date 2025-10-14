@@ -63,6 +63,26 @@ db.exec(`
   CREATE INDEX IF NOT EXISTS idx_context_project ON context_memory(project_id);
 `);
 
+// 🔧 Migration automatique : Ajouter les colonnes manquantes
+const runMigrations = () => {
+  try {
+    // Vérifier et ajouter la colonne 'images' dans conversations
+    const conversationsInfo = db.prepare("PRAGMA table_info(conversations)").all() as Array<{ name: string }>;
+    const hasImagesColumn = conversationsInfo.some(col => col.name === 'images');
+    
+    if (!hasImagesColumn) {
+      console.log('🔄 Migration: Ajout de la colonne images à conversations...');
+      db.exec('ALTER TABLE conversations ADD COLUMN images TEXT');
+      console.log('✅ Migration réussie: colonne images ajoutée');
+    }
+  } catch (error) {
+    console.error('❌ Erreur lors des migrations automatiques:', error);
+  }
+};
+
+// Exécuter les migrations au démarrage
+runMigrations();
+
 export default db;
 export { db }; // Export nommé pour DELETE
 
