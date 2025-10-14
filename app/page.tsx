@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import ReactMarkdown from 'react-markdown';
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
@@ -46,6 +47,9 @@ import {
   PanelLeft,
   Minimize2,
   Calculator,
+  Volume2,
+  VolumeX,
+  Pause,
 } from 'lucide-react';
 
 type ProjectType = 'memoir' | 'chatbot' | 'image-studio' | 'creative-writing' | 'social-media' | 'professional-docs' | 'emails' | 'translation' | 'prompt-generator' | 'text-minify' | 'word-counter';
@@ -326,6 +330,12 @@ export default function Home() {
     icon: '✏️'
   });
   const [inputDialogValue, setInputDialogValue] = useState('');
+  const [speakingMessageIndex, setSpeakingMessageIndex] = useState<number | null>(null);
+  const [speechSynthesis, setSpeechSynthesis] = useState<SpeechSynthesis | null>(null);
+  const [speechRate, setSpeechRate] = useState<number>(1.0); // Vitesse de lecture (0.5 - 2.0)
+  const [showSpeechSettings, setShowSpeechSettings] = useState<boolean>(false);
+  const [speechButtonRef, setSpeechButtonRef] = useState<HTMLButtonElement | null>(null);
+  const speechSettingsRef = useRef<HTMLButtonElement>(null);
 
   // Charger les projets au démarrage
   useEffect(() => {
@@ -351,6 +361,19 @@ export default function Home() {
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages, streamingContent]);
+
+  // Fermer le panneau de paramètres vocaux quand on clique ailleurs
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      const target = event.target as HTMLElement;
+      if (showSpeechSettings && !target.closest('.speech-settings-panel') && !target.closest('[data-speech-settings-btn]')) {
+        setShowSpeechSettings(false);
+      }
+    };
+
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [showSpeechSettings]);
 
   // Fonction pour afficher un toast
   const showToast = (type: 'success' | 'error' | 'info' | 'warning', message: string) => {
@@ -430,6 +453,85 @@ export default function Home() {
   const isArabicText = (text: string): boolean => {
     const arabicRegex = /[\u0600-\u06FF\u0750-\u077F\u08A0-\u08FF\uFB50-\uFDFF\uFE70-\uFEFF]/;
     return arabicRegex.test(text);
+  };
+
+  // Initialiser Web Speech API
+  useEffect(() => {
+    if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
+      setSpeechSynthesis(window.speechSynthesis);
+    }
+  }, []);
+
+  // Nettoyer la synthèse vocale quand on quitte
+  useEffect(() => {
+    return () => {
+      if (speechSynthesis) {
+        speechSynthesis.cancel();
+      }
+    };
+  }, [speechSynthesis]);
+
+  // Fonction pour lire un message à haute voix
+  const speakMessage = (text: string, messageIndex: number) => {
+    if (!speechSynthesis) {
+      showToast('error', 'La lecture vocale n\'est pas disponible sur ce navigateur');
+      return;
+    }
+
+    // Si on est déjà en train de lire ce message, on arrête
+    if (speakingMessageIndex === messageIndex) {
+      speechSynthesis.cancel();
+      setSpeakingMessageIndex(null);
+      return;
+    }
+
+    // Arrêter toute lecture en cours
+    speechSynthesis.cancel();
+
+    // Nettoyer le texte markdown pour la lecture
+    const cleanText = text
+      .replace(/[#*_`~\[\]()]/g, '') // Retirer les caractères markdown
+      .replace(/\n\n+/g, '. ') // Remplacer les doubles sauts de ligne par des points
+      .replace(/\n/g, ' ') // Remplacer les simples sauts de ligne par des espaces
+      .trim();
+
+    const utterance = new SpeechSynthesisUtterance(cleanText);
+    
+    // Détecter la langue et ajuster la voix
+    if (isArabicText(text)) {
+      utterance.lang = 'ar-SA'; // Arabe
+    } else if (/[\u0400-\u04FF]/.test(text)) {
+      utterance.lang = 'ru-RU'; // Russe
+    } else if (/[\u4E00-\u9FFF]/.test(text)) {
+      utterance.lang = 'zh-CN'; // Chinois
+    } else if (/[àâäéèêëïîôùûüÿœæ]/i.test(text)) {
+      utterance.lang = 'fr-FR'; // Français
+    } else {
+      utterance.lang = 'en-US'; // Anglais par défaut
+    }
+
+    // Paramètres de la voix
+    utterance.rate = speechRate; // Vitesse personnalisable
+    utterance.pitch = 1.0; // Tonalité normale
+    utterance.volume = 1.0; // Volume maximum
+
+    // Événements
+    utterance.onstart = () => {
+      setSpeakingMessageIndex(messageIndex);
+    };
+
+    utterance.onend = () => {
+      setSpeakingMessageIndex(null);
+    };
+
+    utterance.onerror = (event) => {
+      console.error('Erreur de lecture vocale:', event);
+      setSpeakingMessageIndex(null);
+      showToast('error', 'Erreur lors de la lecture vocale');
+    };
+
+    // Lancer la lecture
+    speechSynthesis.speak(utterance);
   };
 
   const loadProjects = async () => {
@@ -2469,6 +2571,53 @@ Ce document PDF a été analysé et son contenu textuel complet est ci-dessus. L
               </button>
             )}
             
+            {messages.length > 0 && speechSynthesis && (
+              <button
+                onClick={() => {
+                  if (speakingMessageIndex !== null) {
+                    speechSynthesis.cancel();
+                    setSpeakingMessageIndex(null);
+                  } else {
+                    // Lire tous les messages de l'IA
+                    const allAIMessages = messages
+                      .filter(m => m.role === 'assistant')
+                      .map(m => m.content)
+                      .join('. ');
+                    speakMessage(allAIMessages, -1);
+                  }
+                }}
+                className={`p-2 rounded-lg transition-all ${
+                  speakingMessageIndex !== null
+                    ? 'bg-orange-500/20 text-orange-400 animate-pulse'
+                    : 'hover:bg-purple-500/20 text-gray-400 hover:text-purple-400'
+                }`}
+                title={speakingMessageIndex !== null ? "Arrêter la lecture" : "Lire toute la conversation"}
+              >
+                {speakingMessageIndex !== null ? (
+                  <VolumeX className="w-5 h-5" />
+                ) : (
+                  <Volume2 className="w-5 h-5" />
+                )}
+              </button>
+            )}
+            {messages.length > 0 && speechSynthesis && (
+              <button
+                ref={speechSettingsRef}
+                data-speech-settings-btn
+                onClick={() => {
+                  setShowSpeechSettings(!showSpeechSettings);
+                  setSpeechButtonRef(speechSettingsRef.current);
+                }}
+                className={`p-2 rounded-lg transition-all ${
+                  showSpeechSettings
+                    ? 'bg-purple-500/20 text-purple-400'
+                    : 'hover:bg-white/10 text-gray-400 hover:text-white'
+                }`}
+                title="Paramètres de lecture vocale"
+              >
+                <Settings className="w-5 h-5" />
+              </button>
+            )}
             {messages.length > 0 && (
               <button
                 onClick={clearConversation}
@@ -2716,7 +2865,14 @@ Ce document PDF a été analysé et son contenu textuel complet est ci-dessus. L
                           </div>
                         </div>
                       ) : (
-                        <div className="prose prose-invert max-w-none">
+                        <div 
+                          className="prose prose-invert max-w-none"
+                          style={{ 
+                            direction: isArabicText(msg.content) ? 'rtl' : 'ltr',
+                            textAlign: isArabicText(msg.content) ? 'right' : 'left',
+                            unicodeBidi: 'embed'
+                          }}
+                        >
                           <ReactMarkdown
                             components={{
                               // Style personnalisé pour les éléments markdown
@@ -2759,6 +2915,21 @@ Ce document PDF a été analysé et son contenu textuel complet est ci-dessus. L
                     {/* Boutons d'action (apparaissent au hover) */}
                     {editingMessageIndex !== idx && (
                       <div className="absolute -top-2 -right-2 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                        <button
+                          onClick={() => speakMessage(msg.content, idx)}
+                          className={`p-1.5 ${
+                            speakingMessageIndex === idx 
+                              ? 'bg-orange-500 hover:bg-orange-600 animate-pulse' 
+                              : 'bg-purple-500 hover:bg-purple-600'
+                          } text-white rounded-full shadow-lg transition-colors`}
+                          title={speakingMessageIndex === idx ? "Arrêter la lecture" : "Lire à haute voix"}
+                        >
+                          {speakingMessageIndex === idx ? (
+                            <VolumeX className="w-3.5 h-3.5" />
+                          ) : (
+                            <Volume2 className="w-3.5 h-3.5" />
+                          )}
+                        </button>
                         <button
                           onClick={() => copyMessageToClipboard(msg.content, idx)}
                           className="p-1.5 bg-green-500 hover:bg-green-600 text-white rounded-full shadow-lg transition-colors"
@@ -2830,7 +3001,14 @@ Ce document PDF a été analysé et son contenu textuel complet est ci-dessus. L
                       <Sparkles className="w-4 h-4 text-purple-400 animate-pulse" />
                       <span className="text-sm text-purple-400 font-medium">En train d'écrire...</span>
                     </div>
-                    <div className="prose prose-invert max-w-none">
+                    <div 
+                      className="prose prose-invert max-w-none"
+                      style={{ 
+                        direction: isArabicText(streamingContent) ? 'rtl' : 'ltr',
+                        textAlign: isArabicText(streamingContent) ? 'right' : 'left',
+                        unicodeBidi: 'embed'
+                      }}
+                    >
                       <ReactMarkdown
                         components={{
                           h1: ({node, ...props}) => <h1 className="text-2xl font-bold mb-4 mt-6" {...props} />,
@@ -3415,6 +3593,80 @@ Ce document PDF a été analysé et son contenu textuel complet est ci-dessus. L
           ))}
         </AnimatePresence>
       </div>
+
+      {/* Panneau de paramètres de lecture vocale - Rendu avec portail */}
+      {showSpeechSettings && speechButtonRef && typeof window !== 'undefined' && createPortal(
+        <div 
+          className="speech-settings-panel fixed bg-slate-800 border border-white/20 rounded-xl shadow-2xl p-4 z-[9999]"
+          style={{
+            top: `${(speechButtonRef?.getBoundingClientRect().bottom || 0) + 8}px`,
+            right: `${window.innerWidth - (speechButtonRef?.getBoundingClientRect().right || 0)}px`,
+            width: '288px'
+          }}
+        >
+          <h3 className="text-white font-semibold mb-3 flex items-center gap-2">
+            <Volume2 className="w-4 h-4" />
+            Paramètres vocaux
+          </h3>
+          
+          <div className="space-y-4">
+            <div>
+              <label className="flex items-center justify-between text-sm text-gray-300 mb-2">
+                <span>Vitesse de lecture</span>
+                <span className="text-purple-400 font-medium">{speechRate.toFixed(1)}x</span>
+              </label>
+              <input
+                type="range"
+                min="0.5"
+                max="2.0"
+                step="0.1"
+                value={speechRate}
+                onChange={(e) => setSpeechRate(parseFloat(e.target.value))}
+                className="w-full h-2 bg-white/10 rounded-lg appearance-none cursor-pointer accent-purple-500"
+              />
+              <div className="flex justify-between text-xs text-gray-500 mt-1">
+                <span>Lent</span>
+                <span>Normal</span>
+                <span>Rapide</span>
+              </div>
+            </div>
+            
+            <div className="flex gap-2">
+              <button
+                onClick={() => setSpeechRate(0.75)}
+                className="flex-1 px-3 py-1.5 text-xs bg-white/5 hover:bg-white/10 rounded-lg transition-colors text-white"
+              >
+                0.75x
+              </button>
+              <button
+                onClick={() => setSpeechRate(1.0)}
+                className="flex-1 px-3 py-1.5 text-xs bg-purple-500/20 hover:bg-purple-500/30 rounded-lg transition-colors text-purple-400 font-medium"
+              >
+                1.0x
+              </button>
+              <button
+                onClick={() => setSpeechRate(1.25)}
+                className="flex-1 px-3 py-1.5 text-xs bg-white/5 hover:bg-white/10 rounded-lg transition-colors text-white"
+              >
+                1.25x
+              </button>
+              <button
+                onClick={() => setSpeechRate(1.5)}
+                className="flex-1 px-3 py-1.5 text-xs bg-white/5 hover:bg-white/10 rounded-lg transition-colors text-white"
+              >
+                1.5x
+              </button>
+            </div>
+            
+            <div className="pt-3 border-t border-white/10">
+              <p className="text-xs text-gray-400">
+                💡 Astuce : Utilisez des vitesses plus lentes pour l'apprentissage ou des vitesses plus rapides pour gagner du temps.
+              </p>
+            </div>
+          </div>
+        </div>,
+        document.body
+      )}
     </div>
   );
 }

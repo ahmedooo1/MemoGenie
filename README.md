@@ -27,6 +27,10 @@ Créé par **Ahmad Ahmad** 💜
 - **Syntax Highlighting** : Blocs de code avec coloration syntaxique
 - **Export PDF/Word** : Exportez vos documents en plusieurs formats
 - **Sauvegarde automatique** : Données stockées localement en SQLite
+- **🔊 Lecture Vocale (NEW!)** : Écoutez vos messages à haute voix
+- **🌍 Support RTL** : Affichage parfait de l'arabe et des langues RTL
+- **⚙️ Paramètres vocaux** : Contrôlez la vitesse de lecture (0.5x - 2.0x)
+- **🎯 Détection auto de langue** : Support multilingue intelligent
 
 ## 🚀 Installation
 
