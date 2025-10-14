@@ -7,6 +7,7 @@ import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
 import { vscDarkPlus } from 'react-syntax-highlighter/dist/esm/styles/prism';
 import { jsPDF } from 'jspdf';
 import { Document, Packer, Paragraph, TextRun, HeadingLevel, ImageRun } from 'docx';
+import { getUserId } from '@/lib/user';
 import {
   BookOpen,
   Plus,
@@ -427,7 +428,12 @@ export default function Home() {
 
   const loadProjects = async () => {
     try {
-      const res = await fetch('/api/projects');
+      const userId = getUserId();
+      const res = await fetch('/api/projects', {
+        headers: {
+          'x-user-id': userId
+        }
+      });
       const data = await res.json();
       setProjects(data);
     } catch (error) {
@@ -499,9 +505,13 @@ export default function Home() {
 
   const createNewProject = async (title: string, description: string, projectType: ProjectType = 'chatbot') => {
     try {
+      const userId = getUserId();
       const res = await fetch('/api/projects', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 
+          'Content-Type': 'application/json',
+          'x-user-id': userId
+        },
         body: JSON.stringify({ title, description, projectType }),
       });
       const newProject = await res.json();

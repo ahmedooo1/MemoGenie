@@ -75,6 +75,17 @@ const runMigrations = () => {
       db.exec('ALTER TABLE conversations ADD COLUMN images TEXT');
       console.log('✅ Migration réussie: colonne images ajoutée');
     }
+
+    // Vérifier et ajouter la colonne 'user_id' dans projects
+    const projectsInfo = db.prepare("PRAGMA table_info(projects)").all() as Array<{ name: string }>;
+    const hasUserIdInProjects = projectsInfo.some(col => col.name === 'user_id');
+    
+    if (!hasUserIdInProjects) {
+      console.log('🔄 Migration: Ajout de la colonne user_id à projects...');
+      db.exec('ALTER TABLE projects ADD COLUMN user_id TEXT DEFAULT "anonymous"');
+      db.exec('CREATE INDEX IF NOT EXISTS idx_projects_user ON projects(user_id)');
+      console.log('✅ Migration réussie: colonne user_id ajoutée à projects');
+    }
   } catch (error) {
     console.error('❌ Erreur lors des migrations automatiques:', error);
   }
@@ -92,6 +103,7 @@ export interface Project {
   title: string;
   description?: string;
   project_type?: 'memoir' | 'chatbot' | 'image-studio' | 'creative-writing' | 'social-media' | 'professional-docs' | 'emails' | 'translation' | 'prompt-generator' | 'text-minify' | 'word-counter';
+  user_id?: string;
   created_at?: string;
   updated_at?: string;
 }
@@ -127,18 +139,26 @@ export interface ContextMemory {
 }
 
 // Fonctions pour les projets
-export const createProject = (title: string, description?: string, projectType: 'memoir' | 'chatbot' | 'image-studio' | 'creative-writing' | 'social-media' | 'professional-docs' | 'emails' | 'translation' | 'prompt-generator' | 'text-minify' | 'word-counter' = 'memoir'): number => {
-  const stmt = db.prepare('INSERT INTO projects (title, description, project_type) VALUES (?, ?, ?)');
-  const result = stmt.run(title, description || '', projectType);
+export const createProject = (title: string, description?: string, projectType: 'memoir' | 'chatbot' | 'image-studio' | 'creative-writing' | 'social-media' | 'professional-docs' | 'emails' | 'translation' | 'prompt-generator' | 'text-minify' | 'word-counter' = 'memoir', userId: string = 'anonymous'): number => {
+  const stmt = db.prepare('INSERT INTO projects (title, description, project_type, user_id) VALUES (?, ?, ?, ?)');
+  const result = stmt.run(title, description || '', projectType, userId);
   return result.lastInsertRowid as number;
 };
 
-export const getProject = (id: number): Project | undefined => {
+export const getProject = (id: number, userId?: string): Project | undefined => {
+  if (userId) {
+    const stmt = db.prepare('SELECT * FROM projects WHERE id = ? AND user_id = ?');
+    return stmt.get(id, userId) as Project | undefined;
+  }
   const stmt = db.prepare('SELECT * FROM projects WHERE id = ?');
   return stmt.get(id) as Project | undefined;
 };
 
-export const getAllProjects = (): Project[] => {
+export const getAllProjects = (userId?: string): Project[] => {
+  if (userId) {
+    const stmt = db.prepare('SELECT * FROM projects WHERE user_id = ? ORDER BY updated_at DESC');
+    return stmt.all(userId) as Project[];
+  }
   const stmt = db.prepare('SELECT * FROM projects ORDER BY updated_at DESC');
   return stmt.all() as Project[];
 };

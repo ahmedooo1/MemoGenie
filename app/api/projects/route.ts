@@ -6,9 +6,11 @@ import {
   updateProject,
 } from '@/lib/database';
 
-export async function GET() {
+export async function GET(req: NextRequest) {
   try {
-    const projects = getAllProjects();
+    // Récupérer le user_id depuis le header
+    const userId = req.headers.get('x-user-id') || undefined;
+    const projects = getAllProjects(userId);
     return NextResponse.json(projects);
   } catch (error) {
     console.error('Erreur:', error);
@@ -22,6 +24,7 @@ export async function GET() {
 export async function POST(req: NextRequest) {
   try {
     const { title, description, projectType } = await req.json();
+    const userId = req.headers.get('x-user-id') || 'anonymous';
 
     if (!title) {
       return NextResponse.json(
@@ -30,8 +33,8 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const projectId = createProject(title, description, projectType || 'memoir');
-    const project = getProject(projectId);
+    const projectId = createProject(title, description, projectType || 'memoir', userId);
+    const project = getProject(projectId, userId);
 
     return NextResponse.json(project);
   } catch (error) {
