@@ -21,11 +21,8 @@ jobs:
     - name: Install Dependencies
       run: npm install
       
-    # - name: Build
-    #   run: npm run build
-
-    # - name: Generate Static Files
-    #   run: npm run generate
+    - name: Build
+      run: npm run build
 
     - name: Deploy to Server
       uses: appleboy/ssh-action@master
@@ -38,6 +35,6 @@ jobs:
           cd /var/www/MemoGenie
           git pull origin main
           npm install --production
-          # npm run build
+          npm run build
           npm run generate
           pm2 restart memogenie
