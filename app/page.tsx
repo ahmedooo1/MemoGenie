@@ -426,6 +426,12 @@ export default function Home() {
     });
   };
 
+  // Fonction pour détecter si le texte contient de l'arabe
+  const isArabicText = (text: string): boolean => {
+    const arabicRegex = /[\u0600-\u06FF\u0750-\u077F\u08A0-\u08FF\uFB50-\uFDFF\uFE70-\uFEFF]/;
+    return arabicRegex.test(text);
+  };
+
   const loadProjects = async () => {
     try {
       const userId = getUserId();
@@ -2660,6 +2666,8 @@ Ce document PDF a été analysé et son contenu textuel complet est ci-dessus. L
                           ? 'bg-gradient-to-r from-purple-500 to-pink-500 text-white'
                           : 'bg-white/10 text-white backdrop-blur-xl'
                       }`}
+                      dir={isArabicText(msg.content) ? 'rtl' : 'ltr'}
+                      style={{ textAlign: isArabicText(msg.content) ? 'right' : 'left' }}
                     >
                       {/* Afficher les images si présentes */}
                       {msg.images && msg.images.length > 0 && (
@@ -2689,6 +2697,7 @@ Ce document PDF a été analysé et son contenu textuel complet est ci-dessus. L
                             }}
                             rows={Math.max(3, editedContent.split('\n').length)}
                             className="w-full px-3 py-2 bg-white/10 border border-white/20 rounded-lg text-white resize-y focus:outline-none focus:ring-2 focus:ring-purple-500 leading-relaxed"
+                            dir={isArabicText(editedContent) ? 'rtl' : 'ltr'}
                             autoFocus
                           />
                           <div className="flex gap-2 justify-end">
@@ -2812,7 +2821,11 @@ Ce document PDF a été analysé et son contenu textuel complet est ci-dessus. L
                   animate={{ opacity: 1 }}
                   className="flex justify-start"
                 >
-                  <div className="max-w-3xl px-6 py-4 rounded-2xl bg-white/10 text-white backdrop-blur-xl">
+                  <div 
+                    className="max-w-3xl px-6 py-4 rounded-2xl bg-white/10 text-white backdrop-blur-xl"
+                    dir={isArabicText(streamingContent) ? 'rtl' : 'ltr'}
+                    style={{ textAlign: isArabicText(streamingContent) ? 'right' : 'left' }}
+                  >
                     <div className="flex items-center gap-2 mb-2">
                       <Sparkles className="w-4 h-4 text-purple-400 animate-pulse" />
                       <span className="text-sm text-purple-400 font-medium">En train d'écrire...</span>
