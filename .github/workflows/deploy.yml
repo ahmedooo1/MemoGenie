@@ -40,4 +40,4 @@ jobs:
           npm install --production
           # npm run build
           npm run generate
-          pm2 restart all
+          pm2 restart memogenie
