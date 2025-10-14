@@ -34,7 +34,7 @@ jobs:
         script: |
           cd /var/www/MemoGenie
           git pull origin main
-          npm install --production
+          npm install
+          npm run migrate
           npm run build
-          npm run generate
-          pm2 restart memogenie
+          pm2 restart memogenie || pm2 start npm --name "memogenie" -- start -- -p 3500
