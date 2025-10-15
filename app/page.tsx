@@ -50,6 +50,11 @@ import {
   Volume2,
   VolumeX,
   Pause,
+  Phone,
+  PhoneOff,
+  Mic,
+  MicOff,
+  Radio,
 } from 'lucide-react';
 
 type ProjectType = 'memoir' | 'chatbot' | 'image-studio' | 'creative-writing' | 'social-media' | 'professional-docs' | 'emails' | 'translation' | 'prompt-generator' | 'text-minify' | 'word-counter';
@@ -336,6 +341,37 @@ export default function Home() {
   const [showSpeechSettings, setShowSpeechSettings] = useState<boolean>(false);
   const [speechButtonRef, setSpeechButtonRef] = useState<HTMLButtonElement | null>(null);
   const speechSettingsRef = useRef<HTMLButtonElement>(null);
+  
+  // États pour l'appel vocal (Push-to-Talk)
+  const [isVoiceCallActive, setIsVoiceCallActive] = useState<boolean>(false);
+  const [isPushingToTalk, setIsPushingToTalk] = useState<boolean>(false); // Maintien du bouton
+  const [isAISpeaking, setIsAISpeaking] = useState<boolean>(false);
+  const [voiceTranscript, setVoiceTranscript] = useState<string>('');
+  const [recognition, setRecognition] = useState<any>(null);
+  
+  // Refs pour garder les valeurs à jour dans les callbacks
+  const selectedProjectRef = useRef<Project | null>(null);
+  const isAISpeakingRef = useRef<boolean>(false);
+  const isVoiceCallActiveRef = useRef<boolean>(false);
+  const isPushingToTalkRef = useRef<boolean>(false);
+  const isProcessingMessageRef = useRef<boolean>(false); // Flag pour empêcher les envois multiples
+  
+  // Mettre à jour les refs quand les états changent
+  useEffect(() => {
+    selectedProjectRef.current = selectedProject;
+  }, [selectedProject]);
+  
+  useEffect(() => {
+    isAISpeakingRef.current = isAISpeaking;
+  }, [isAISpeaking]);
+  
+  useEffect(() => {
+    isVoiceCallActiveRef.current = isVoiceCallActive;
+  }, [isVoiceCallActive]);
+  
+  useEffect(() => {
+    isPushingToTalkRef.current = isPushingToTalk;
+  }, [isPushingToTalk]);
 
   // Charger les projets au démarrage
   useEffect(() => {
@@ -532,6 +568,398 @@ export default function Home() {
 
     // Lancer la lecture
     speechSynthesis.speak(utterance);
+  };
+
+  // Initialiser la reconnaissance vocale
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+      
+      if (SpeechRecognition) {
+        const recognitionInstance = new SpeechRecognition();
+        recognitionInstance.continuous = true;
+        recognitionInstance.interimResults = true;
+        recognitionInstance.lang = 'fr-FR'; // Langue par défaut
+        
+        recognitionInstance.onresult = (event: any) => {
+          // Mode Push-to-Talk : Capturer TOUT le transcript pendant que le bouton est maintenu
+          let interimTranscript = '';
+          let finalTranscript = '';
+          
+          for (let i = event.resultIndex; i < event.results.length; i++) {
+            const transcript = event.results[i][0].transcript;
+            if (event.results[i].isFinal) {
+              finalTranscript += transcript + ' ';
+            } else {
+              interimTranscript += transcript;
+            }
+          }
+          
+          // Afficher le transcript en temps réel (pour le feedback visuel)
+          const currentTranscript = (finalTranscript || interimTranscript).trim();
+          if (currentTranscript && isPushingToTalkRef.current) {
+            setVoiceTranscript(currentTranscript);
+            console.log('🎤 Transcript capturé:', currentTranscript);
+          }
+        };
+        
+        recognitionInstance.onerror = (event: any) => {
+          console.error('Erreur de reconnaissance vocale:', event.error);
+          if (event.error === 'no-speech') {
+            // Pas de problème dans le mode Push-to-Talk
+          } else {
+            showToast('error', 'Erreur de reconnaissance vocale');
+          }
+        };
+        
+        recognitionInstance.onend = () => {
+          console.log('🔄 Recognition onend');
+          // Mode Push-to-Talk : Ne PAS redémarrer automatiquement
+          // Le recognition ne démarre QUE quand l'utilisateur maintient le bouton
+        };
+        
+        setRecognition(recognitionInstance);
+      }
+    }
+  }, []);
+
+  // Gérer l'envoi du message vocal à l'IA
+  const handleVoiceMessage = async (transcript: string) => {
+    console.log('🎤 handleVoiceMessage appelé avec:', transcript);
+    console.log('🔍 selectedProjectRef.current dans handleVoiceMessage:', selectedProjectRef.current);
+    
+    // Utiliser la ref pour avoir la valeur actuelle
+    const currentProject = selectedProjectRef.current;
+    
+    if (!transcript || !currentProject) {
+      console.log('❌ Pas de transcript ou projet:', { transcript, currentProject });
+      return;
+    }
+    
+    // Vérifier si on est déjà en train de traiter un message
+    if (isProcessingMessageRef.current) {
+      console.log('⚠️ Déjà en train de traiter un message, ignoré:', transcript);
+      return;
+    }
+    
+    // Marquer qu'on commence le traitement
+    isProcessingMessageRef.current = true;
+    console.log('🔒 Flag de traitement activé');
+    
+    // IMPORTANT : Arrêter complètement le recognition pour éviter la boucle
+    if (recognition) {
+      try {
+        recognition.stop();
+        console.log('🛑 Recognition ARRÊTÉ complètement');
+      } catch (e) {
+        console.log('⚠️ Recognition déjà arrêté');
+      }
+    }
+    
+    console.log('🔇 Écoute arrêtée');
+    
+    // Ajouter le message de l'utilisateur
+    const userMessage: Message = {
+      role: 'user',
+      content: transcript,
+      images: []
+    };
+    
+    setMessages(prev => [...prev, userMessage]);
+    console.log('📝 Message utilisateur ajouté');
+    
+    try {
+      setIsAISpeaking(true);
+      console.log('🔊 IA en train de parler (état activé)');
+      
+      // Envoyer à l'API avec streaming
+      console.log('📤 Envoi à l\'API:', {
+        message: transcript,
+        projectId: currentProject.id,
+        chapterId: selectedChapter?.id,
+      });
+      
+      const res = await fetch('/api/chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          message: transcript,
+          projectId: currentProject.id,
+          chapterId: selectedChapter?.id,
+        }),
+      });
+      
+      console.log('📥 Réponse API reçue, status:', res.status);
+      
+      // Lire le stream de réponse
+      const reader = res.body?.getReader();
+      const decoder = new TextDecoder();
+      let fullContent = '';
+      
+      if (reader) {
+        console.log('📖 Lecture du stream...');
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) {
+            console.log('✅ Stream terminé');
+            break;
+          }
+          
+          const chunk = decoder.decode(value);
+          const lines = chunk.split('\n');
+          
+          for (const line of lines) {
+            if (line.startsWith('data: ')) {
+              const data = line.slice(6);
+              if (data === '[DONE]') break;
+              
+              try {
+                const parsed = JSON.parse(data);
+                fullContent += parsed.content;
+              } catch (e) {
+                // Ignorer les erreurs de parsing
+              }
+            }
+          }
+        }
+      }
+      
+      console.log('💬 Contenu complet reçu:', fullContent.substring(0, 100) + '...');
+      console.log('📏 Longueur du contenu:', fullContent.length);
+      
+      // Ajouter la réponse complète
+      const aiMessage: Message = {
+        role: 'assistant',
+        content: fullContent,
+        images: []
+      };
+      
+      setMessages(prev => [...prev, aiMessage]);
+      console.log('📝 Message IA ajouté');
+      
+      // Sauvegarder les messages
+      if (currentProject) {
+        try {
+          await fetch('/api/save-message', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              projectId: currentProject.id,
+              role: 'user',
+              content: transcript,
+              chapterId: selectedChapter?.id,
+            }),
+          });
+          
+          await fetch('/api/save-message', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              projectId: currentProject.id,
+              role: 'assistant',
+              content: fullContent,
+              chapterId: selectedChapter?.id,
+            }),
+          });
+          console.log('💾 Messages sauvegardés');
+        } catch (saveError) {
+          console.error('❌ Erreur sauvegarde:', saveError);
+        }
+      }
+      
+      // Lire la réponse à haute voix
+      // Utiliser window.speechSynthesis directement et les refs pour les états
+      const hasSpeechSynthesis = typeof window !== 'undefined' && 'speechSynthesis' in window;
+      const isCallActive = isVoiceCallActiveRef.current;
+      
+      console.log('🔍 Vérification conditions speech:', {
+        hasSpeechSynthesis,
+        isCallActive,
+        hasContent: !!fullContent,
+        contentLength: fullContent.length
+      });
+      
+      if (hasSpeechSynthesis && isCallActive && fullContent) {
+        // IMPORTANT : Arrêter le recognition AVANT de parler pour éviter de capter sa propre voix
+        if (recognition) {
+          try {
+            recognition.stop();
+            console.log('🛑 Recognition arrêté AVANT speech synthesis');
+          } catch (e) {
+            console.log('⚠️ Recognition déjà arrêté');
+          }
+        }
+        
+        const cleanText = fullContent
+          .replace(/[#*_`~\[\]()]/g, '')
+          .replace(/\n\n+/g, '. ')
+          .replace(/\n/g, ' ')
+          .trim();
+        
+        console.log('🧹 Texte nettoyé:', cleanText.substring(0, 100) + '...');
+        console.log('📏 Longueur texte nettoyé:', cleanText.length);
+        
+        const utterance = new SpeechSynthesisUtterance(cleanText);
+        utterance.lang = isArabicText(fullContent) ? 'ar-SA' : 'fr-FR';
+        utterance.rate = speechRate;
+        utterance.pitch = 1.0;
+        utterance.volume = 1.0;
+        
+        console.log('🗣️ Configuration utterance:', {
+          lang: utterance.lang,
+          rate: utterance.rate,
+          textLength: cleanText.length
+        });
+        
+        utterance.onstart = () => {
+          console.log('▶️ Speech synthesis démarrée');
+        };
+        
+        utterance.onend = () => {
+          console.log('⏹️ Speech synthesis terminée');
+          setIsAISpeaking(false);
+          
+          // IMPORTANT : Libérer le flag de traitement
+          isProcessingMessageRef.current = false;
+          console.log('🔓 Flag de traitement désactivé');
+          
+          // Mode Push-to-Talk : Ne PAS redémarrer automatiquement le recognition
+          // L'utilisateur devra maintenir le bouton pour parler à nouveau
+        };
+        
+        utterance.onerror = (e) => {
+          console.error('❌ Erreur speech synthesis:', e);
+          setIsAISpeaking(false);
+          
+          // IMPORTANT : Libérer le flag de traitement même en cas d'erreur
+          isProcessingMessageRef.current = false;
+          console.log('🔓 Flag de traitement désactivé (erreur)');
+          
+          // Mode Push-to-Talk : Ne PAS redémarrer automatiquement
+        };
+        
+        console.log('🚀 Lancement de speechSynthesis.speak()...');
+        window.speechSynthesis.speak(utterance);
+        console.log('✅ speechSynthesis.speak() appelé');
+      } else {
+        console.log('⚠️ Conditions non remplies pour speech synthesis');
+        if (!hasSpeechSynthesis) console.log('  - speechSynthesis non disponible dans le navigateur');
+        if (!isCallActive) console.log('  - isCallActive = false (ref value)');
+        if (!fullContent) console.log('  - fullContent vide');
+        
+        setIsAISpeaking(false);
+        
+        // IMPORTANT : Libérer le flag de traitement
+        isProcessingMessageRef.current = false;
+        console.log('🔓 Flag de traitement désactivé (pas de speech)');
+        
+        // Mode Push-to-Talk : Ne PAS redémarrer automatiquement
+      }
+    } catch (error) {
+      console.error('❌ Erreur dans handleVoiceMessage:', error);
+      showToast('error', 'Erreur lors de l\'envoi du message vocal');
+      setIsAISpeaking(false);
+      
+      // IMPORTANT : Libérer le flag de traitement en cas d'erreur
+      isProcessingMessageRef.current = false;
+      console.log('🔓 Flag de traitement désactivé (catch)');
+      
+      // Mode Push-to-Talk : Ne PAS redémarrer automatiquement
+    }
+  };
+
+  // Démarrer l'appel vocal
+  const startVoiceCall = () => {
+    console.log('📞 startVoiceCall appelé');
+    
+    if (!recognition) {
+      showToast('error', 'La reconnaissance vocale n\'est pas supportée par ce navigateur');
+      return;
+    }
+    
+    if (!selectedProject) {
+      showToast('warning', 'Veuillez sélectionner un projet d\'abord');
+      return;
+    }
+    
+    console.log('✅ Démarrage de l\'appel vocal...');
+    setIsVoiceCallActive(true);
+    
+    // Mode Push-to-Talk : pas de démarrage automatique du recognition
+    showToast('success', '🎙️ Appel vocal prêt - Maintenez le bouton pour parler !');
+  };
+
+  // Arrêter l'appel vocal
+  const endVoiceCall = () => {
+    console.log('📞 endVoiceCall appelé - Arrêt de l\'appel');
+    
+    setIsVoiceCallActive(false);
+    setIsPushingToTalk(false);
+    setIsAISpeaking(false);
+    setVoiceTranscript('');
+    
+    if (recognition) {
+      recognition.stop();
+    }
+    
+    if (typeof window !== 'undefined' && window.speechSynthesis) {
+      window.speechSynthesis.cancel();
+    }
+    
+    showToast('info', '📞 Appel vocal terminé');
+  };
+
+  // Push-to-Talk : Démarrer l'écoute quand on appuie
+  const startPushToTalk = () => {
+    console.log('🎙️ Push-to-Talk : START');
+    
+    // IMPORTANT : Si l'IA parle, l'interrompre immédiatement !
+    if (isAISpeaking) {
+      console.log('🛑 Interruption de l\'IA en cours de parole');
+      setIsAISpeaking(false);
+      
+      // Arrêter la synthèse vocale immédiatement
+      if (typeof window !== 'undefined' && window.speechSynthesis) {
+        window.speechSynthesis.cancel();
+        console.log('🔇 Speech synthesis annulé');
+      }
+      
+      // Libérer le flag de traitement
+      isProcessingMessageRef.current = false;
+      console.log('🔓 Flag de traitement libéré (interruption)');
+    }
+    
+    setIsPushingToTalk(true);
+    setVoiceTranscript('');
+    
+    if (recognition) {
+      try {
+        recognition.start();
+        console.log('✅ Recognition démarré');
+      } catch (e) {
+        console.log('⚠️ Recognition déjà actif');
+      }
+    }
+  };
+
+  // Push-to-Talk : Arrêter l'écoute et envoyer quand on relâche
+  const stopPushToTalk = () => {
+    console.log('🎙️ Push-to-Talk : STOP');
+    setIsPushingToTalk(false);
+    
+    if (recognition) {
+      recognition.stop();
+      console.log('🛑 Recognition arrêté');
+    }
+    
+    // Envoyer le transcript capturé si valide
+    if (voiceTranscript.trim()) {
+      console.log('📤 Envoi du transcript:', voiceTranscript);
+      handleVoiceMessage(voiceTranscript);
+      setVoiceTranscript('');
+    } else {
+      console.log('❌ Pas de transcript à envoyer');
+    }
   };
 
   const loadProjects = async () => {
@@ -1184,42 +1612,80 @@ Ce document PDF a été analysé et son contenu textuel complet est ci-dessus. L
   const clearConversation = async () => {
     showConfirm(
       '🗑️ Vider la conversation',
-      'Êtes-vous sûr de vouloir supprimer toute la conversation ? Cette action est irréversible.',
+      'Êtes-vous sûr de vouloir supprimer toute la conversation de la base de données ? Cette action est irréversible.',
       async () => {
-        // Supprimer tous les messages de la base de données
-        if (selectedProject) {
-          try {
-            console.log('🗑️ Suppression de', messages.length, 'messages...');
-            
-            // Supprimer tous les messages ayant des IDs
-            const messagesToDelete = messages.filter(msg => msg.id);
-            console.log('🗑️ Messages avec ID à supprimer:', messagesToDelete.length);
-            
-            if (messagesToDelete.length > 0) {
-              const deletePromises = messagesToDelete.map(msg => {
-                console.log('🗑️ Suppression du message ID:', msg.id);
-                return fetch(`/api/delete-message?id=${msg.id}`, { method: 'DELETE' });
-              });
-              
-              const results = await Promise.all(deletePromises);
-              console.log('✅ Résultats suppression:', results.length, 'requêtes effectuées');
-            } else {
-              console.log('⚠️ Aucun message avec ID à supprimer');
-            }
-          } catch (error) {
-            console.error('❌ Erreur lors de la suppression des messages:', error);
-            showToast('error', '❌ Erreur lors de la suppression');
-            return; // Ne pas vider l'interface si erreur
-          }
+        if (!selectedProject) {
+          console.log('❌ Pas de projet sélectionné');
+          setMessages([]);
+          setUploadedImages([]);
+          showToast('success', '✅ Conversation effacée de l\'interface');
+          return;
         }
-        
-        // Vider l'interface
-        setMessages([]);
-        setUploadedImages([]);
-        showToast('success', '✅ Conversation effacée définitivement');
+
+        try {
+          console.log('🗑️ Suppression de tous les messages du projet', selectedProject.id);
+          
+          // Méthode 1 : Supprimer les messages avec ID connus
+          const messagesToDelete = messages.filter(msg => msg.id);
+          console.log('� Messages avec ID dans l\'interface:', messagesToDelete.length);
+          
+          if (messagesToDelete.length > 0) {
+            console.log('🗑️ Suppression des messages avec ID...');
+            const deletePromises = messagesToDelete.map(msg => 
+              fetch(`/api/delete-message?id=${msg.id}`, { method: 'DELETE' })
+                .then(res => {
+                  console.log(`✅ Message ${msg.id} supprimé`);
+                  return res;
+                })
+                .catch(err => {
+                  console.error(`❌ Erreur suppression message ${msg.id}:`, err);
+                  return null;
+                })
+            );
+            
+            await Promise.all(deletePromises);
+          }
+          
+          // Méthode 2 : Recharger les conversations pour s'assurer que tout est supprimé
+          // (au cas où il y aurait des messages dans la BDD qui ne sont pas dans l'interface)
+          console.log('🔄 Rechargement des conversations pour vérification...');
+          const response = await fetch(`/api/chat?projectId=${selectedProject.id}`);
+          if (response.ok) {
+            const data = await response.json();
+            console.log('📊 Messages trouvés dans la BDD:', data.length);
+            
+            if (data.length > 0) {
+              console.log('🗑️ Suppression des messages restants dans la BDD...');
+              const additionalDeletes = data.map((msg: any) => 
+                fetch(`/api/delete-message?id=${msg.id}`, { method: 'DELETE' })
+                  .then(res => {
+                    console.log(`✅ Message BDD ${msg.id} supprimé`);
+                    return res;
+                  })
+                  .catch(err => {
+                    console.error(`❌ Erreur suppression BDD ${msg.id}:`, err);
+                    return null;
+                  })
+              );
+              
+              await Promise.all(additionalDeletes);
+            }
+          }
+          
+          console.log('✅ Suppression terminée avec succès');
+          
+          // Vider l'interface
+          setMessages([]);
+          setUploadedImages([]);
+          showToast('success', '✅ Conversation effacée définitivement de la base de données');
+          
+        } catch (error) {
+          console.error('❌ Erreur lors de la suppression:', error);
+          showToast('error', '❌ Erreur lors de la suppression');
+        }
       },
       'danger',
-      'Vider',
+      'Vider définitivement',
       'Annuler'
     );
   };
@@ -2571,35 +3037,44 @@ Ce document PDF a été analysé et son contenu textuel complet est ci-dessus. L
               </button>
             )}
             
-            {messages.length > 0 && speechSynthesis && (
+            {/* Bouton Appel Vocal */}
+            {recognition && (
               <button
                 onClick={() => {
-                  if (speakingMessageIndex !== null) {
-                    speechSynthesis.cancel();
-                    setSpeakingMessageIndex(null);
+                  if (!selectedProject) {
+                    showToast('warning', '⚠️ Veuillez d\'abord créer ou sélectionner un projet !');
+                    return;
+                  }
+                  if (isVoiceCallActive) {
+                    endVoiceCall();
                   } else {
-                    // Lire tous les messages de l'IA
-                    const allAIMessages = messages
-                      .filter(m => m.role === 'assistant')
-                      .map(m => m.content)
-                      .join('. ');
-                    speakMessage(allAIMessages, -1);
+                    startVoiceCall();
                   }
                 }}
+                disabled={!selectedProject && !isVoiceCallActive}
                 className={`p-2 rounded-lg transition-all ${
-                  speakingMessageIndex !== null
-                    ? 'bg-orange-500/20 text-orange-400 animate-pulse'
-                    : 'hover:bg-purple-500/20 text-gray-400 hover:text-purple-400'
+                  !selectedProject && !isVoiceCallActive
+                    ? 'bg-gray-600 text-gray-400 cursor-not-allowed opacity-50'
+                    : isVoiceCallActive
+                    ? 'bg-green-500 hover:bg-green-600 text-white animate-pulse'
+                    : 'bg-gradient-to-r from-purple-500 to-pink-500 hover:from-purple-600 hover:to-pink-600 text-white'
                 }`}
-                title={speakingMessageIndex !== null ? "Arrêter la lecture" : "Lire toute la conversation"}
+                title={
+                  !selectedProject && !isVoiceCallActive
+                    ? "⚠️ Créez ou sélectionnez un projet d'abord"
+                    : isVoiceCallActive 
+                    ? "Raccrocher" 
+                    : "Démarrer un appel vocal avec l'IA"
+                }
               >
-                {speakingMessageIndex !== null ? (
-                  <VolumeX className="w-5 h-5" />
+                {isVoiceCallActive ? (
+                  <PhoneOff className="w-5 h-5" />
                 ) : (
-                  <Volume2 className="w-5 h-5" />
+                  <Phone className="w-5 h-5" />
                 )}
               </button>
             )}
+            
             {messages.length > 0 && speechSynthesis && (
               <button
                 ref={speechSettingsRef}
@@ -3593,6 +4068,132 @@ Ce document PDF a été analysé et son contenu textuel complet est ci-dessus. L
           ))}
         </AnimatePresence>
       </div>
+
+      {/* Overlay Appel Vocal */}
+      <AnimatePresence>
+        {isVoiceCallActive && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 bg-black/80 backdrop-blur-md z-[200] flex items-center justify-center"
+            onClick={(e) => {
+              // Ne rien faire si on clique sur le fond
+              // (éviter de fermer accidentellement l'appel)
+            }}
+          >
+            <motion.div
+              initial={{ scale: 0.8, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.8, opacity: 0 }}
+              className="bg-gradient-to-br from-purple-900/90 to-pink-900/90 backdrop-blur-xl border-2 border-white/20 rounded-3xl p-8 max-w-md w-full mx-4 shadow-2xl"
+              onClick={(e) => e.stopPropagation()}
+            >
+              {/* Titre */}
+              <div className="text-center mb-8">
+                <h2 className="text-3xl font-bold text-white mb-2">Appel Vocal</h2>
+                <p className="text-gray-300 text-sm">Conversation en temps réel avec l'IA</p>
+              </div>
+
+              {/* Animation du micro / ondes sonores */}
+              <div className="flex justify-center mb-8">
+                <div className="relative">
+                  {/* Cercle principal */}
+                  <div className={`w-32 h-32 rounded-full flex items-center justify-center transition-all duration-300 ${
+                    isPushingToTalk 
+                      ? 'bg-gradient-to-r from-green-500 to-emerald-500 animate-pulse shadow-lg shadow-green-500/50' 
+                      : isAISpeaking 
+                      ? 'bg-gradient-to-r from-purple-500 to-pink-500 animate-pulse shadow-lg shadow-purple-500/50'
+                      : 'bg-gradient-to-r from-gray-600 to-gray-700'
+                  }`}>
+                    {isPushingToTalk ? (
+                      <Mic className="w-16 h-16 text-white" />
+                    ) : isAISpeaking ? (
+                      <Radio className="w-16 h-16 text-white animate-spin" />
+                    ) : (
+                      <MicOff className="w-16 h-16 text-white" />
+                    )}
+                  </div>
+
+                  {/* Ondes sonores animées */}
+                  {isPushingToTalk && (
+                    <>
+                      <div className="absolute inset-0 rounded-full border-4 border-green-400 opacity-75 animate-ping"></div>
+                      <div className="absolute inset-0 rounded-full border-4 border-green-300 opacity-50 animate-ping" style={{ animationDelay: '0.5s' }}></div>
+                    </>
+                  )}
+                  
+                  {isAISpeaking && (
+                    <>
+                      <div className="absolute inset-0 rounded-full border-4 border-purple-400 opacity-75 animate-ping"></div>
+                      <div className="absolute inset-0 rounded-full border-4 border-pink-300 opacity-50 animate-ping" style={{ animationDelay: '0.5s' }}></div>
+                    </>
+                  )}
+                </div>
+              </div>
+
+              {/* Statut */}
+              <div className="text-center mb-8">
+                <p className="text-white text-xl font-bold mb-2">
+                  {isAISpeaking ? '🤖 L\'IA parle... (Appuyez pour interrompre)' : isPushingToTalk ? '🎤 En écoute...' : '✋ Prêt à parler'}
+                </p>
+                {voiceTranscript && isPushingToTalk && (
+                  <p className="text-purple-300 text-sm mt-2 italic">"{voiceTranscript}"</p>
+                )}
+              </div>
+
+              {/* Bouton Push-to-Talk GÉANT au centre */}
+              <div className="flex flex-col items-center gap-6 mb-8">
+                <button
+                  onMouseDown={startPushToTalk}
+                  onMouseUp={stopPushToTalk}
+                  onTouchStart={startPushToTalk}
+                  onTouchEnd={stopPushToTalk}
+                  className={`relative w-40 h-40 rounded-full transition-all duration-200 shadow-2xl cursor-pointer active:scale-90 ${
+                    isPushingToTalk
+                      ? 'bg-gradient-to-br from-red-500 to-pink-600 scale-95'
+                      : isAISpeaking
+                      ? 'bg-gradient-to-br from-orange-500 to-red-600 hover:scale-105 animate-pulse'
+                      : 'bg-gradient-to-br from-purple-500 to-blue-600 hover:scale-105'
+                  }`}
+                  title={isAISpeaking ? "Appuyez pour interrompre l'IA" : "Maintenez pour parler"}
+                >
+                  {isPushingToTalk ? (
+                    <div className="absolute inset-0 flex flex-col items-center justify-center">
+                      <Mic className="w-16 h-16 text-white animate-pulse" />
+                      <p className="text-white font-bold text-sm mt-2">Relâchez</p>
+                    </div>
+                  ) : (
+                    <div className="absolute inset-0 flex flex-col items-center justify-center">
+                      <Mic className="w-16 h-16 text-white" />
+                      <p className="text-white font-bold text-sm mt-2">Appuyez</p>
+                    </div>
+                  )}
+                </button>
+
+                <p className="text-gray-300 text-center max-w-xs">
+                  {isAISpeaking 
+                    ? "� Appuyez sur le bouton pour interrompre et parler !"
+                    : "👆 Maintenez le bouton et parlez, relâchez pour envoyer"
+                  }
+                </p>
+              </div>
+
+              {/* Bouton Raccrocher en bas */}
+              <div className="flex justify-center">
+                <button
+                  onClick={endVoiceCall}
+                  className="px-6 py-3 rounded-full bg-red-600 hover:bg-red-700 text-white font-semibold transition-all shadow-lg flex items-center gap-2"
+                  title="Terminer l'appel"
+                >
+                  <PhoneOff className="w-5 h-5" />
+                  Raccrocher
+                </button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* Panneau de paramètres de lecture vocale - Rendu avec portail */}
       {showSpeechSettings && speechButtonRef && typeof window !== 'undefined' && createPortal(
