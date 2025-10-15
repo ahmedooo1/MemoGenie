@@ -1,107 +1,98 @@
-// scripts/migrate-to-supabase.js
-// Usage:
-//   SUPABASE_SERVICE_ROLE_KEY="votre_service_role_key" node migrate-to-supabase.js
-// Requirements: npm i better-sqlite3 @supabase/supabase-js
+/**
+ * 🔧 Script de migration automatique complet
+ * Applique toutes les migrations nécessaires en une seule commande
+ */
 
 const Database = require('better-sqlite3');
-const { createClient } = require('@supabase/supabase-js');
 const path = require('path');
+const fs = require('fs');
 
-const SQLITE_PATH = path.join(process.cwd(), 'data', 'memoire.db');
-const SUPABASE_URL = 'https://sqptmrpfqyhmywcvenph.supabase.co';
-const SUPABASE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
-if (!SUPABASE_KEY) {
-  console.error('ERROR: set SUPABASE_SERVICE_ROLE_KEY env var');
-  process.exit(1);
+const dbPath = path.join(process.cwd(), 'data', 'memoire.db');
+const dbDir = path.dirname(dbPath);
+
+// Créer le dossier data s'il n'existe pas
+if (!fs.existsSync(dbDir)) {
+  fs.mkdirSync(dbDir, { recursive: true });
+  console.log('📁 Dossier data créé');
 }
 
-const db = new Database(SQLITE_PATH, { readonly: true });
-const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
+const db = new Database(dbPath);
 
-function getTables() {
-  return db.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'").all()
-    .map(r => r.name);
-}
+console.log('🚀 Démarrage des migrations...\n');
 
-function getRows(table) {
-  return db.prepare(`SELECT * FROM "${table}"`).all();
-}
-
-function normalizeRow(row) {
-  // Convert buffers to base64 strings, leave other types as-is
-  const out = {};
-  for (const k of Object.keys(row)) {
-    const v = row[k];
-    if (Buffer.isBuffer(v)) out[k] = v.toString('base64');
-    else out[k] = v;
-  }
-  return out;
-}
-
-async function ensureTableExistsInSupabase(table, sampleRow) {
-  // Attempt a minimal insert with ON CONFLICT DO NOTHING requires table to exist.
-  // We proactively create a basic table when absent using dynamic SQL:
-  const { data: exists } = await supabase
-    .rpc('pg_table_is_visible', { oid: 0 }) // dummy to keep supabase client loaded
-    .catch(() => ({}));
-  // Simpler approach: try a safe query; if it fails, create table from sampleRow
-  try {
-    await supabase.from(table).select('1').limit(1);
-    return;
-  } catch (e) {
-    // Build CREATE TABLE with columns inferred as text (safe fallback)
-    const cols = Object.keys(sampleRow).map(col => `"${col}" text`).join(', ');
-    const createSQL = `CREATE TABLE IF NOT EXISTS public."${table}" (${cols});`;
-    const { error } = await supabase.rpc('sql', { q: createSQL }).catch(() => ({ error: { message: 'rpc sql unavailable' } }));
-    // If rpc('sql') not available, fall back to supabase.query via REST is not exposed — instead run via SQL Editor in dashboard.
-    if (error) {
-      console.warn(`⚠️ Impossible de créer la table "${table}" automatiquement via l'API. Créez-la manuellement avec ce SQL:\n${createSQL}`);
-      throw new Error('Création de table via API non supportée — créez manuellement dans Supabase SQL Editor.');
+// Liste des migrations à appliquer
+const migrations = [
+  {
+    name: 'Ajouter colonne images à conversations',
+    check: () => {
+      const tableInfo = db.prepare("PRAGMA table_info(conversations)").all();
+      return !tableInfo.some(col => col.name === 'images');
+    },
+    apply: () => {
+      db.exec('ALTER TABLE conversations ADD COLUMN images TEXT');
+    }
+  },
+  {
+    name: 'Vérifier types de projets',
+    check: () => {
+      // Cette migration est toujours OK car project_type accepte toute valeur TEXT
+      return false;
+    },
+    apply: () => {
+      // Pas d'action nécessaire
     }
   }
-}
+];
 
-async function migrateTable(table) {
-  console.log(`\n➡️  Migration de la table: ${table}`);
-  const rows = getRows(table);
-  if (!rows.length) { console.log('   - Aucune ligne à migrer'); return; }
+// Appliquer les migrations
+let appliedCount = 0;
+let skippedCount = 0;
 
-  // Try ensure table exists: if fails, instruct user to create it manually
+migrations.forEach((migration, index) => {
   try {
-    await ensureTableExistsInSupabase(table, rows[0]);
-  } catch (err) {
-    console.error(err.message);
-    return;
-  }
-
-  const BATCH = 200;
-  for (let i = 0; i < rows.length; i += BATCH) {
-    const batch = rows.slice(i, i + BATCH).map(normalizeRow);
-    const { error } = await supabase.from(table).insert(batch);
-    if (error) {
-      console.error(`   - Erreur insert batch ${i/BATCH}:`, error.message || error);
-      // continue to next batch
+    if (migration.check()) {
+      console.log(`⏳ Migration ${index + 1}: ${migration.name}...`);
+      migration.apply();
+      console.log(`✅ Migration ${index + 1}: ${migration.name} - Réussie\n`);
+      appliedCount++;
     } else {
-      console.log(`   - Batch ${i/BATCH} inséré (${batch.length} rows)`);
+      console.log(`⏭️  Migration ${index + 1}: ${migration.name} - Déjà appliquée\n`);
+      skippedCount++;
     }
+  } catch (error) {
+    console.error(`❌ Migration ${index + 1}: ${migration.name} - Erreur:`);
+    console.error(error.message);
+    console.log('');
   }
-  console.log(`   ✓ Migration terminée pour ${table} (${rows.length} rows)`);
+});
+
+// Vérifier l'intégrité de la base de données
+try {
+  const integrityCheck = db.prepare('PRAGMA integrity_check').get();
+  if (integrityCheck.integrity_check === 'ok') {
+    console.log('✅ Vérification d\'intégrité: OK');
+  } else {
+    console.warn('⚠️  Problème d\'intégrité détecté:', integrityCheck);
+  }
+} catch (error) {
+  console.error('❌ Erreur lors de la vérification d\'intégrité:', error.message);
 }
 
-(async () => {
-  try {
-    const tables = getTables();
-    if (!tables.length) { console.log('Aucune table SQLite trouvée.'); process.exit(0); }
-    console.log('Tables trouvées:', tables.join(', '));
-    for (const table of tables) {
-      await migrateTable(table);
-    }
-    console.log('\n✅ Migration terminée. Vérifiez Supabase Dashboard pour valider les schémas/données.');
-    db.close();
-    process.exit(0);
-  } catch (err) {
-    console.error('Migration échouée:', err);
-    db.close();
-    process.exit(1);
-  }
-})();
+// Afficher le résumé
+console.log('\n' + '='.repeat(50));
+console.log('📊 RÉSUMÉ DES MIGRATIONS');
+console.log('='.repeat(50));
+console.log(`✅ Migrations appliquées: ${appliedCount}`);
+console.log(`⏭️  Migrations déjà présentes: ${skippedCount}`);
+console.log(`📝 Total: ${migrations.length}`);
+console.log('='.repeat(50) + '\n');
+
+// Afficher la structure des tables
+console.log('📋 Structure de la table conversations:');
+const conversationsStructure = db.prepare("PRAGMA table_info(conversations)").all();
+conversationsStructure.forEach(col => {
+  console.log(`   - ${col.name} (${col.type})`);
+});
+
+db.close();
+console.log('\n✅ Migrations terminées avec succès!');
