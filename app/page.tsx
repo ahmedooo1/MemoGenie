@@ -55,9 +55,31 @@ import {
   Mic,
   MicOff,
   Radio,
+  Bold,
+  Italic,
+  Underline,
+  Strikethrough,
+  AlignLeft,
+  AlignCenter,
+  AlignRight,
+  AlignJustify,
+  List,
+  ListOrdered,
+  Quote,
+  Code,
+  Link,
+  Table,
+  Heading1,
+  Heading2,
+  Heading3,
+  Type,
+  Highlighter,
+  MoreHorizontal,
+  Undo,
+  Redo,
 } from 'lucide-react';
 
-type ProjectType = 'memoir' | 'chatbot' | 'image-studio' | 'creative-writing' | 'social-media' | 'professional-docs' | 'emails' | 'translation' | 'prompt-generator' | 'text-minify' | 'word-counter';
+type ProjectType = 'memoir' | 'chatbot' | 'image-studio' | 'creative-writing' | 'social-media' | 'professional-docs' | 'emails' | 'translation' | 'prompt-generator' | 'text-minify' | 'word-counter' | 'ai-editor';
 
 interface ProjectTypeInfo {
   id: ProjectType;
@@ -80,6 +102,16 @@ const PROJECT_TYPES: ProjectTypeInfo[] = [
     color: 'blue',
     gradient: 'from-blue-500 to-cyan-500',
     features: ['Conversations naturelles', 'Réponses contextuelles', 'Multi-sujets']
+  },
+  {
+    id: 'ai-editor',
+    name: 'Éditeur IA (WYSIWYG)',
+    icon: Edit2,
+    emoji: '📝',
+    description: 'Éditeur de texte enrichi avec assistance IA complète',
+    color: 'violet',
+    gradient: 'from-violet-500 to-purple-600',
+    features: ['Éditeur WYSIWYG', 'Assistance IA en temps réel', 'Formatage avancé', 'Commandes IA intégrées']
   },
   {
     id: 'memoir',
@@ -352,6 +384,28 @@ export default function Home() {
   // État pour l'enregistrement vocal rapide (sans appel)
   const [isQuickRecording, setIsQuickRecording] = useState<boolean>(false);
   
+  // États pour l'éditeur WYSIWYG
+  const [editorContent, setEditorContent] = useState<string>('');
+  const [selectedText, setSelectedText] = useState<string>('');
+  const [showAIMenu, setShowAIMenu] = useState<boolean>(false);
+  const [aiMenuPosition, setAiMenuPosition] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
+  const [customAIPrompt, setCustomAIPrompt] = useState<string>('');
+  const [isProcessingAI, setIsProcessingAI] = useState<boolean>(false);
+  const [showTableModal, setShowTableModal] = useState<boolean>(false);
+  const [tableRows, setTableRows] = useState<number>(3);
+  const [tableCols, setTableCols] = useState<number>(3);
+  // États pour la toolbar de tableau
+  const [selectedTable, setSelectedTable] = useState<HTMLTableElement | null>(null);
+  const [tableToolbarPos, setTableToolbarPos] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
+  const [showTableToolbar, setShowTableToolbar] = useState(false);
+  const savedAIRangeRef = useRef<Range | null>(null);
+  const editorRef = useRef<HTMLDivElement | null>(null);
+  const imageInputRef = useRef<HTMLInputElement | null>(null);
+  
+  // Historique pour Undo/Redo
+  const historyRef = useRef<string[]>(['<p><br></p>']);
+  const historyIndexRef = useRef<number>(0);
+  
   // MediaRecorder pour l'enregistrement audio
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioChunksRef = useRef<Blob[]>([]);
@@ -392,6 +446,7 @@ export default function Home() {
   // Charger les chapitres et conversations quand un projet est sélectionné
   useEffect(() => {
     if (selectedProject) {
+      clearEditor(); // Nettoyer l'éditeur au changement de projet
       loadChapters(selectedProject.id);
       loadConversations(selectedProject.id);
       // Recharger la galerie si elle est ouverte
@@ -409,6 +464,15 @@ export default function Home() {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages, streamingContent]);
 
+  // Initialiser l'éditeur WYSIWYG
+  useEffect(() => {
+    if (editorRef.current && selectedProject?.project_type === 'ai-editor') {
+      // Activer le formatage HTML et désactiver le mode stylewithcss
+      document.execCommand('styleWithCSS', false, 'false');
+      document.execCommand('defaultParagraphSeparator', false, 'p');
+    }
+  }, [selectedProject]);
+
   // Fermer le panneau de paramètres vocaux quand on clique ailleurs
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
@@ -421,6 +485,186 @@ export default function Home() {
     document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, [showSpeechSettings]);
+
+  // Gérer les raccourcis clavier (Undo/Redo)
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // Ctrl+Z ou Cmd+Z = Undo
+      if ((e.ctrlKey || e.metaKey) && e.key === 'z' && !e.shiftKey) {
+        e.preventDefault();
+        handleUndo();
+      }
+      // Ctrl+Y ou Ctrl+Shift+Z ou Cmd+Shift+Z = Redo
+      if ((e.ctrlKey || e.metaKey) && (e.key === 'y' || (e.key === 'z' && e.shiftKey))) {
+        e.preventDefault();
+        handleRedo();
+      }
+    };
+
+    document.addEventListener('keydown', handleKeyDown);
+    return () => document.removeEventListener('keydown', handleKeyDown);
+  }, []);
+
+  // Ajouter les changements de l'éditeur à l'historique
+  useEffect(() => {
+    if (!editorRef.current) return;
+
+    let changeTimeout: NodeJS.Timeout;
+
+    const handleInputChange = () => {
+      // Attendre 500ms avant d'ajouter à l'historique (debounce)
+      clearTimeout(changeTimeout);
+      changeTimeout = setTimeout(() => {
+        addToHistory();
+      }, 500);
+    };
+
+    // Écouter les changements
+    editorRef.current.addEventListener('input', handleInputChange);
+    editorRef.current.addEventListener('paste', handleInputChange);
+    editorRef.current.addEventListener('drop', handleInputChange);
+
+    return () => {
+      if (editorRef.current) {
+        editorRef.current.removeEventListener('input', handleInputChange);
+        editorRef.current.removeEventListener('paste', handleInputChange);
+        editorRef.current.removeEventListener('drop', handleInputChange);
+      }
+      clearTimeout(changeTimeout);
+    };
+  }, []);
+
+  // Nettoyer l'éditeur au refresh/fermeture de la page
+  useEffect(() => {
+    const handleBeforeUnload = () => {
+      if (editorRef.current) {
+        editorRef.current.innerHTML = '<p><br></p>';
+      }
+    };
+
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    return () => window.removeEventListener('beforeunload', handleBeforeUnload);
+  }, []);
+
+  // Système de pagination automatique pour l'éditeur A4
+  useEffect(() => {
+    if (!editorRef.current || selectedProject?.project_type !== 'ai-editor') return;
+
+    // Dimensions A4 en pixels (basé sur 96 DPI)
+    const A4_HEIGHT_CM = 29.7;
+    const CM_TO_PX = 37.795275591; // 1cm = 37.795px à 96 DPI
+    const A4_HEIGHT_PX = A4_HEIGHT_CM * CM_TO_PX; // ~1122px
+    
+    // Padding en pixels
+    const TOP_PADDING_CM = 2.5;
+    const BOTTOM_PADDING_CM = 2;
+    const TOTAL_PADDING_PX = (TOP_PADDING_CM + BOTTOM_PADDING_CM) * CM_TO_PX; // ~170px
+    
+    // Hauteur de contenu utilisable par page
+    const MAX_CONTENT_PER_PAGE = A4_HEIGHT_PX - TOTAL_PADDING_PX; // ~952px
+    const TRIGGER_THRESHOLD = MAX_CONTENT_PER_PAGE * 0.95; // Déclencher à 95% de la page
+
+    let lastHeight = 0;
+
+    const checkContentOverflow = () => {
+      if (!editorRef.current) return;
+
+      const currentHeight = editorRef.current.scrollHeight;
+      
+      // Ne vérifier que si la hauteur a changé
+      if (currentHeight === lastHeight) return;
+      lastHeight = currentHeight;
+
+      // Compter le nombre de pages actuelles
+      const pageBreaks = editorRef.current.querySelectorAll('.page-break');
+      const currentPageCount = pageBreaks.length + 1;
+      
+      // Hauteur maximale autorisée pour ce nombre de pages
+      const maxAllowedHeight = TRIGGER_THRESHOLD * currentPageCount;
+      
+      console.log(`📊 Hauteur: ${currentHeight}px / Max: ${maxAllowedHeight.toFixed(0)}px (Page ${currentPageCount})`);
+      
+      // Si le contenu dépasse le seuil
+      if (currentHeight > maxAllowedHeight) {
+        console.log(`🔥 DÉPASSEMENT ! Création page ${currentPageCount + 1}`);
+        
+        // Vérifier que le dernier élément n'est pas déjà un page-break
+        const lastChild = editorRef.current.lastElementChild;
+        if (lastChild?.classList.contains('page-break')) {
+          return; // Déjà un page-break à la fin
+        }
+        
+        // Créer le saut de page
+        const pageBreakDiv = document.createElement('div');
+        pageBreakDiv.className = 'page-break';
+        pageBreakDiv.contentEditable = 'false';
+        pageBreakDiv.style.pageBreakAfter = 'always';
+        pageBreakDiv.textContent = `📄 PAGE ${currentPageCount + 1}`;
+        
+        // Ajouter à l'éditeur
+        editorRef.current.appendChild(pageBreakDiv);
+        
+        // Ajouter un paragraphe vide pour continuer à écrire
+        const newParagraph = document.createElement('p');
+        newParagraph.innerHTML = '<br>';
+        editorRef.current.appendChild(newParagraph);
+        
+        // Scroll vers la nouvelle page avec animation
+        setTimeout(() => {
+          // Trouver le conteneur avec scroll (le parent de l'éditeur)
+          const scrollContainer = editorRef.current?.parentElement;
+          if (scrollContainer) {
+            // Calculer la position du pageBreakDiv
+            const pageBreakRect = pageBreakDiv.getBoundingClientRect();
+            const containerRect = scrollContainer.getBoundingClientRect();
+            const scrollTop = scrollContainer.scrollTop;
+            const targetScroll = scrollTop + (pageBreakRect.top - containerRect.top) - (containerRect.height / 2);
+            
+            // Scroll smooth vers la nouvelle page
+            scrollContainer.scrollTo({
+              top: targetScroll,
+              behavior: 'smooth'
+            });
+            
+            console.log(`⬇️ Scroll vers position: ${targetScroll}px`);
+          }
+          
+          // Focus sur le nouveau paragraphe
+          setTimeout(() => {
+            newParagraph.focus();
+            
+            // Placer le curseur dans le paragraphe
+            const selection = window.getSelection();
+            const range = document.createRange();
+            range.selectNodeContents(newParagraph);
+            range.collapse(false);
+            selection?.removeAllRanges();
+            selection?.addRange(range);
+          }, 400);
+        }, 100);
+        
+        showToast('info', `📄 Page ${currentPageCount + 1} créée`);
+      }
+    };
+
+    const handleEditorChange = () => {
+      // Vérifier à chaque frappe
+      checkContentOverflow();
+    };
+
+    // Écouter TOUS les types de changements
+    editorRef.current.addEventListener('input', handleEditorChange);
+    editorRef.current.addEventListener('paste', handleEditorChange);
+    editorRef.current.addEventListener('keyup', handleEditorChange);
+
+    return () => {
+      if (editorRef.current) {
+        editorRef.current.removeEventListener('input', handleEditorChange);
+        editorRef.current.removeEventListener('paste', handleEditorChange);
+        editorRef.current.removeEventListener('keyup', handleEditorChange);
+      }
+    };
+  }, [selectedProject?.project_type]);
 
   // Fonction pour afficher un toast
   const showToast = (type: 'success' | 'error' | 'info' | 'warning', message: string) => {
@@ -1200,6 +1444,910 @@ export default function Home() {
         setIsTranscribing(false);
         showToast('error', 'Erreur d\'envoi audio');
       }
+    }
+  };
+
+  // Fonctions pour l'éditeur WYSIWYG
+  const applyFormatting = (command: string, value?: string) => {
+    // S'assurer que l'éditeur a le focus
+    if (editorRef.current) {
+      editorRef.current.focus();
+    }
+    
+    // Obtenir la sélection actuelle
+    const selection = window.getSelection();
+    
+    // Si pas de texte sélectionné, montrer un message
+    if (!selection || selection.toString().length === 0) {
+      showToast('warning', '⚠️ Sélectionnez du texte d\'abord');
+      return;
+    }
+    
+    // Appliquer la commande
+    try {
+      document.execCommand(command, false, value);
+    } catch (error) {
+      console.error('Erreur lors de l\'application du formatage:', error);
+      showToast('error', '❌ Erreur lors du formatage');
+    }
+  };
+
+  // Fonction pour convertir markdown en HTML
+  const markdownToHtml = (markdown: string): string => {
+    let html = markdown;
+    
+    // Titres (gérer tous les niveaux de # à ######)
+    html = html.replace(/^###### (.*$)/gim, '<h6>$1</h6>');
+    html = html.replace(/^##### (.*$)/gim, '<h5>$1</h5>');
+    html = html.replace(/^#### (.*$)/gim, '<h4>$1</h4>');
+    html = html.replace(/^### (.*$)/gim, '<h3>$1</h3>');
+    html = html.replace(/^## (.*$)/gim, '<h2>$1</h2>');
+    html = html.replace(/^# (.*$)/gim, '<h1>$1</h1>');
+    
+    // Gras et italique
+    html = html.replace(/\*\*\*(.*?)\*\*\*/g, '<strong><em>$1</em></strong>');
+    html = html.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
+    html = html.replace(/\*(.*?)\*/g, '<em>$1</em>');
+    
+    // Listes à puces
+    html = html.replace(/^\- (.*$)/gim, '<li>$1</li>');
+    html = html.replace(/(<li>.*<\/li>)/s, '<ul>$1</ul>');
+    
+    // Listes numérotées
+    html = html.replace(/^\d+\. (.*$)/gim, '<li>$1</li>');
+    
+    // Retours à la ligne
+    html = html.replace(/\n\n/g, '</p><p>');
+    html = html.replace(/\n/g, '<br>');
+    
+    // Envelopper dans des paragraphes si pas déjà fait
+    if (!html.startsWith('<')) {
+      html = `<p>${html}</p>`;
+    }
+    
+    return html;
+  };
+
+  const insertTable = () => {
+    if (!editorRef.current) return;
+    
+    // Créer le HTML du tableau simplifié (sans redimensionnement UI)
+    let tableHTML = '<table style="border-collapse: collapse; width: 100%; margin: 10px 0; border: 1px solid #333;">';
+    
+    for (let i = 0; i < tableRows; i++) {
+      tableHTML += '<tr>';
+      for (let j = 0; j < tableCols; j++) {
+        const tag = i === 0 ? 'th' : 'td';
+        tableHTML += `<${tag} style="border: 1px solid #333; padding: 8px; text-align: left; ${i === 0 ? 'background-color: #f2f2f2; font-weight: bold;' : ''}">`;
+        tableHTML += i === 0 ? `Colonne ${j + 1}` : '&nbsp;';
+        tableHTML += `</${tag}>`;
+      }
+      tableHTML += '</tr>';
+    }
+    
+    tableHTML += '</table><p><br></p>'; // Ajouter un paragraphe après le tableau
+    
+    // Insérer le tableau en mettant le focus d'abord
+    editorRef.current.focus();
+    
+    // Utiliser insertHTML avec focus
+    const selection = window.getSelection();
+    if (selection && selection.rangeCount > 0) {
+      const range = selection.getRangeAt(0);
+      const fragment = range.createContextualFragment(tableHTML);
+      range.insertNode(fragment);
+      
+      // Déplacer le curseur après le tableau
+      range.collapse(false);
+      selection.removeAllRanges();
+      selection.addRange(range);
+    }
+    
+    setShowTableModal(false);
+    showToast('success', '✅ Tableau inséré');
+  };
+
+  // Fonction pour insérer une image dans l'éditeur
+  const insertImage = (file: File) => {
+    if (!editorRef.current) return;
+    
+    // Vérifier que c'est bien une image
+    if (!file.type.startsWith('image/')) {
+      showToast('error', '❌ Le fichier doit être une image');
+      return;
+    }
+    
+    // Convertir l'image en base64
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      const imageUrl = e.target?.result as string;
+      
+      // Insérer l'image dans l'éditeur
+      editorRef.current?.focus();
+      const selection = window.getSelection();
+      if (selection && selection.rangeCount > 0) {
+        const range = selection.getRangeAt(0);
+        
+        // Créer l'élément image avec styles
+        const imgHTML = `<img src="${imageUrl}" style="max-width: 100%; height: auto; margin: 10px 0; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.1);" alt="Image insérée" />`;
+        const fragment = range.createContextualFragment(imgHTML);
+        range.insertNode(fragment);
+        
+        // Déplacer le curseur après l'image
+        range.collapse(false);
+        selection.removeAllRanges();
+        selection.addRange(range);
+      }
+      
+      showToast('success', '✅ Image insérée');
+    };
+    
+    reader.onerror = () => {
+      showToast('error', '❌ Erreur lors de la lecture de l\'image');
+    };
+    
+    reader.readAsDataURL(file);
+  };
+
+  const addNewPage = () => {
+    if (!editorRef.current) return;
+    
+    editorRef.current.focus();
+    
+    // Compter le nombre de pages existantes
+    const pageBreaks = editorRef.current.querySelectorAll('.page-break');
+    const nextPageNumber = pageBreaks.length + 2;
+    
+    // Créer un élément div pour le saut de page avec style professionnel
+    const pageBreak = document.createElement('div');
+    pageBreak.className = 'page-break';
+    pageBreak.contentEditable = 'false';
+    pageBreak.style.pageBreakAfter = 'always';
+    pageBreak.textContent = `📄 Page ${nextPageNumber}`;
+    
+    // Créer un paragraphe vide après le saut de page pour continuer à écrire
+    const newParagraph = document.createElement('p');
+    newParagraph.innerHTML = '<br>';
+    
+    // Insérer les éléments à la position du curseur
+    const selection = window.getSelection();
+    if (selection && selection.rangeCount > 0) {
+      const range = selection.getRangeAt(0);
+      range.insertNode(newParagraph);
+      range.insertNode(pageBreak);
+      
+      // Placer le curseur dans le nouveau paragraphe
+      range.setStart(newParagraph, 0);
+      range.collapse(true);
+      selection.removeAllRanges();
+      selection.addRange(range);
+      
+      // Scroll automatiquement vers la nouvelle page
+      setTimeout(() => {
+        const scrollContainer = editorRef.current?.parentElement;
+        if (scrollContainer && pageBreak) {
+          const pageBreakRect = pageBreak.getBoundingClientRect();
+          const containerRect = scrollContainer.getBoundingClientRect();
+          const scrollTop = scrollContainer.scrollTop;
+          const targetScroll = scrollTop + (pageBreakRect.top - containerRect.top) - (containerRect.height / 2);
+          
+          scrollContainer.scrollTo({
+            top: targetScroll,
+            behavior: 'smooth'
+          });
+        }
+        
+        setTimeout(() => {
+          newParagraph.focus();
+          const sel = window.getSelection();
+          const rng = document.createRange();
+          rng.selectNodeContents(newParagraph);
+          rng.collapse(false);
+          sel?.removeAllRanges();
+          sel?.addRange(rng);
+        }, 400);
+      }, 100);
+    } else {
+      // Si pas de sélection, ajouter à la fin
+      editorRef.current.appendChild(pageBreak);
+      editorRef.current.appendChild(newParagraph);
+      
+      // Scroll automatiquement vers la fin
+      setTimeout(() => {
+        const scrollContainer = editorRef.current?.parentElement;
+        if (scrollContainer && pageBreak) {
+          const pageBreakRect = pageBreak.getBoundingClientRect();
+          const containerRect = scrollContainer.getBoundingClientRect();
+          const scrollTop = scrollContainer.scrollTop;
+          const targetScroll = scrollTop + (pageBreakRect.top - containerRect.top) - (containerRect.height / 2);
+          
+          scrollContainer.scrollTo({
+            top: targetScroll,
+            behavior: 'smooth'
+          });
+        }
+        
+        setTimeout(() => {
+          newParagraph.focus();
+          const sel = window.getSelection();
+          const rng = document.createRange();
+          rng.selectNodeContents(newParagraph);
+          rng.collapse(false);
+          sel?.removeAllRanges();
+          sel?.addRange(rng);
+        }, 400);
+      }, 100);
+    }
+    
+    showToast('success', `📄 Page ${nextPageNumber} ajoutée`);
+  };
+
+  // Fonction pour effacer complètement l'éditeur
+  const clearEditor = () => {
+    if (editorRef.current) {
+      editorRef.current.innerHTML = '<p><br></p>';
+      setSelectedText('');
+      setShowAIMenu(false);
+      setCustomAIPrompt('');
+    }
+  };
+
+  // Fonction pour ajouter à l'historique
+  const addToHistory = () => {
+    if (editorRef.current) {
+      // Supprimer tout ce qui vient après l'index actuel
+      historyRef.current = historyRef.current.slice(0, historyIndexRef.current + 1);
+      
+      // Ajouter le nouvel état
+      historyRef.current.push(editorRef.current.innerHTML);
+      historyIndexRef.current++;
+      
+      // Limiter la taille de l'historique à 50 entrées
+      if (historyRef.current.length > 50) {
+        historyRef.current.shift();
+        historyIndexRef.current--;
+      }
+    }
+  };
+
+  // Fonction Undo
+  const handleUndo = () => {
+    if (historyIndexRef.current > 0) {
+      historyIndexRef.current--;
+      if (editorRef.current) {
+        editorRef.current.innerHTML = historyRef.current[historyIndexRef.current];
+        showToast('info', '↶ Undo');
+      }
+    }
+  };
+
+  // Fonction Redo
+  const handleRedo = () => {
+    if (historyIndexRef.current < historyRef.current.length - 1) {
+      historyIndexRef.current++;
+      if (editorRef.current) {
+        editorRef.current.innerHTML = historyRef.current[historyIndexRef.current];
+        showToast('info', '↷ Redo');
+      }
+    }
+  };
+
+  const handleTextSelection = () => {
+    const selection = window.getSelection();
+    const text = selection?.toString() || '';
+    
+    if (text && text.trim().length > 0) {
+      setSelectedText(text);
+      setCustomAIPrompt(''); // Réinitialiser le champ custom à chaque nouvelle sélection
+      
+      // IMPORTANT: Sauvegarder le range dans un Ref pour le conserver
+      if (selection && selection.rangeCount > 0) {
+        savedAIRangeRef.current = selection.getRangeAt(0).cloneRange();
+      }
+      
+      // Obtenir la position de la sélection
+      const range = selection?.getRangeAt(0);
+      const rect = range?.getBoundingClientRect();
+      
+      if (rect) {
+        // Ajuster la position pour que le menu reste dans l'écran
+        const menuWidth = 450; // Largeur estimée du menu
+        const menuHeight = 400; // Hauteur estimée du menu
+        
+        let x = rect.left + rect.width / 2;
+        let y = rect.top - 10;
+        
+        // Vérifier les bords horizontaux
+        if (x + menuWidth / 2 > window.innerWidth) {
+          x = window.innerWidth - menuWidth / 2 - 20;
+        }
+        if (x - menuWidth / 2 < 0) {
+          x = menuWidth / 2 + 20;
+        }
+        
+        // Vérifier les bords verticaux
+        if (y - menuHeight < 0) {
+          // Si pas assez d'espace en haut, afficher en dessous
+          y = rect.bottom + 10;
+        }
+        
+        setAiMenuPosition({ x, y });
+        setShowAIMenu(true);
+      }
+    } else {
+      setShowAIMenu(false);
+      setCustomAIPrompt(''); // Réinitialiser aussi quand on désélectionne
+    }
+  };
+
+  const handleAICommand = async (command: string) => {
+    if (!selectedText) return;
+    
+    setShowAIMenu(false);
+    setIsGenerating(true);
+    
+    let prompt = '';
+    
+    switch (command) {
+      case 'improve':
+        prompt = `Améliore ce texte en le rendant plus clair et professionnel :\n\n"${selectedText}"`;
+        break;
+      case 'shorter':
+        prompt = `Rends ce texte plus concis tout en gardant l'essentiel :\n\n"${selectedText}"`;
+        break;
+      case 'longer':
+        prompt = `Développe et enrichis ce texte avec plus de détails :\n\n"${selectedText}"`;
+        break;
+      case 'simplify':
+        prompt = `Simplifie ce texte pour le rendre plus accessible :\n\n"${selectedText}"`;
+        break;
+      case 'professional':
+        prompt = `Reformule ce texte dans un ton plus professionnel :\n\n"${selectedText}"`;
+        break;
+      case 'casual':
+        prompt = `Reformule ce texte dans un ton plus décontracté :\n\n"${selectedText}"`;
+        break;
+      case 'fix':
+        prompt = `Corrige l'orthographe et la grammaire de ce texte :\n\n"${selectedText}"`;
+        break;
+      case 'translate-en':
+        prompt = `Traduis ce texte en anglais :\n\n"${selectedText}"`;
+        break;
+      case 'translate-fr':
+        prompt = `Traduis ce texte en français :\n\n"${selectedText}"`;
+        break;
+      case 'continue':
+        prompt = `Continue ce texte de manière cohérente :\n\n"${selectedText}"`;
+        break;
+      case 'custom':
+        // Commande personnalisée
+        if (!customAIPrompt.trim()) return;
+        prompt = `${customAIPrompt}\n\nTexte à traiter :\n\n"${selectedText}"`;
+        break;
+      default:
+        return;
+    }
+    
+    setIsProcessingAI(true);
+    
+    try {
+      const response = await fetch('/api/chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          projectId: selectedProject?.id,
+          chapterId: selectedChapter?.id,
+          message: prompt,
+          images: [],
+          files: []
+        })
+      });
+      
+      const reader = response.body?.getReader();
+      const decoder = new TextDecoder();
+      let aiResponse = '';
+      
+      while (true) {
+        const { done, value } = await reader!.read();
+        if (done) break;
+        
+        const chunk = decoder.decode(value);
+        const lines = chunk.split('\n');
+        
+        for (const line of lines) {
+          if (line.startsWith('data: ')) {
+            const data = line.slice(6);
+            if (data === '[DONE]') continue;
+            
+            try {
+              const parsed = JSON.parse(data);
+              if (parsed.content) {
+                aiResponse += parsed.content;
+              }
+            } catch (e) {}
+          }
+        }
+      }
+      
+      // Remplacer le texte sélectionné par la réponse de l'IA
+      if (aiResponse && savedAIRangeRef.current) {
+        // Convertir le markdown en HTML
+        const htmlContent = markdownToHtml(aiResponse);
+        
+        // Déterminer si c'est une commande d'insertion ou de remplacement
+        const isInsertionCommand = command === 'custom' && 
+          (customAIPrompt.toLowerCase().includes('ajoute') ||
+           customAIPrompt.toLowerCase().includes('crée') ||
+           customAIPrompt.toLowerCase().includes('ajouter') ||
+           customAIPrompt.toLowerCase().includes('créer') ||
+           customAIPrompt.toLowerCase().includes('insère') ||
+           customAIPrompt.toLowerCase().includes('insérer') ||
+           customAIPrompt.toLowerCase().includes('génère') ||
+           customAIPrompt.toLowerCase().includes('générer'));
+        
+        // Restaurer le focus à l'éditeur AVANT de modifier
+        if (editorRef.current) {
+          editorRef.current.focus();
+        }
+        
+        if (isInsertionCommand) {
+          // Mode INSERTION : insérer AVANT le texte sélectionné sans le supprimer
+          const fragment = savedAIRangeRef.current.createContextualFragment(htmlContent);
+          savedAIRangeRef.current.insertNode(fragment);
+          
+          // Ajouter un saut de ligne après le contenu inséré
+          const brElement = document.createElement('br');
+          savedAIRangeRef.current.insertNode(brElement);
+          
+          // Repositionner après le contenu inséré
+          savedAIRangeRef.current.collapse(false);
+        } else {
+          // Mode REMPLACEMENT : supprimer et remplacer le texte sélectionné
+          savedAIRangeRef.current.deleteContents();
+          const fragment = savedAIRangeRef.current.createContextualFragment(htmlContent);
+          savedAIRangeRef.current.insertNode(fragment);
+          savedAIRangeRef.current.collapse(false);
+        }
+        
+        // Restaurer la sélection
+        const newSelection = window.getSelection();
+        if (newSelection) {
+          newSelection.removeAllRanges();
+          newSelection.addRange(savedAIRangeRef.current);
+        }
+        
+        // Nettoyer le range sauvegardé
+        savedAIRangeRef.current = null;
+        
+        showToast('success', '✨ Texte modifié par l\'IA');
+      } else if (!savedAIRangeRef.current) {
+        showToast('error', 'Veuillez sélectionner du texte avant d\'utiliser l\'IA');
+      }
+      
+    } catch (error) {
+      console.error('Erreur IA:', error);
+      showToast('error', 'Erreur lors de la modification');
+    } finally {
+      setIsGenerating(false);
+      setIsProcessingAI(false);
+      setCustomAIPrompt(''); // Réinitialiser le prompt personnalisé
+    }
+  };
+
+  // Fonction pour exporter le contenu de l'éditeur
+  const exportEditorContent = (format: 'pdf' | 'docx' | 'html' | 'txt') => {
+    const content = editorRef.current?.innerHTML || '';
+    const textContent = editorRef.current?.innerText || '';
+    
+    switch (format) {
+      case 'html':
+        const htmlBlob = new Blob([content], { type: 'text/html' });
+        const htmlUrl = URL.createObjectURL(htmlBlob);
+        const htmlLink = document.createElement('a');
+        htmlLink.href = htmlUrl;
+        htmlLink.download = `document-${Date.now()}.html`;
+        htmlLink.click();
+        showToast('success', '📄 Exporté en HTML');
+        break;
+        
+      case 'txt':
+        const txtBlob = new Blob([textContent], { type: 'text/plain' });
+        const txtUrl = URL.createObjectURL(txtBlob);
+        const txtLink = document.createElement('a');
+        txtLink.href = txtUrl;
+        txtLink.download = `document-${Date.now()}.txt`;
+        txtLink.click();
+        showToast('success', '📄 Exporté en TXT');
+        break;
+        
+      case 'pdf':
+        // Export PDF professionnel avec respect strict des dimensions A4
+        const pdf = new jsPDF({
+          unit: 'mm',
+          format: 'a4',
+          compress: true
+        });
+        
+        const pageWidth = 210; // A4 width in mm
+        const pageHeight = 297; // A4 height in mm
+        const margin = 15;
+        const contentWidth = pageWidth - 2 * margin;
+        const maxYContent = pageHeight - margin; // Zone de contenu max
+        
+        // Analyser le HTML pour extraire le formatage
+        const tempDiv = document.createElement('div');
+        tempDiv.innerHTML = content;
+        
+        let yPosition = margin;
+        let currentPageNumber = 1;
+        
+        // Fonction pour ajouter une nouvelle page
+        const addNewPDFPage = () => {
+          pdf.addPage();
+          yPosition = margin;
+          currentPageNumber++;
+        };
+        
+        // Fonction pour nettoyer le markdown brut du texte
+        const cleanMarkdown = (text: string): string => {
+          text = text.replace(/^#+\s+/gm, '');
+          text = text.replace(/^[-*+]\s+/gm, '');
+          text = text.replace(/^\d+\.\s+/gm, '');
+          return text.trim();
+        };
+        
+        // Fonction pour obtenir le texte pur d'un élément
+        const getCleanText = (element: Element): string => {
+          // Si c'est un élément page-break, ignorer complètement
+          if (element.className && element.className.includes('page-break')) {
+            return '';
+          }
+          
+          let text = '';
+          for (let i = 0; i < element.childNodes.length; i++) {
+            const node = element.childNodes[i];
+            if (node.nodeType === Node.TEXT_NODE) {
+              const nodeText = node.textContent || '';
+              // Ignorer les marqueurs de saut de page
+              if (!nodeText.includes('📄 Page') && 
+                  !nodeText.includes('--- Saut de page ---')) {
+                text += nodeText;
+              }
+            } else if (node.nodeType === Node.ELEMENT_NODE) {
+              const child = node as Element;
+              // Ignorer complètement les éléments page-break
+              if (child.className && (
+                  child.className.includes('hidden') || 
+                  child.className.includes('toolbar') ||
+                  child.className.includes('page-break'))) {
+                continue;
+              }
+              text += getCleanText(child);
+            }
+          }
+          return cleanMarkdown(text).trim();
+        };
+        
+        // Fonction pour calculer la hauteur requise d'un élément
+        const calculateElementHeight = (element: Element): number => {
+          const tagName = element.tagName.toLowerCase();
+          
+          if (tagName === 'img') {
+            return 60; // Hauteur estimée pour images
+          }
+          
+          if (tagName === 'table') {
+            const rows = element.querySelectorAll('tr');
+            return rows.length * 15 + 10; // Estimation hauteur tableau
+          }
+          
+          const text = getCleanText(element);
+          if (!text) return 0;
+          
+          let fontSize = 11;
+          if (tagName === 'h1') fontSize = 22;
+          else if (tagName === 'h2') fontSize = 18;
+          else if (tagName === 'h3') fontSize = 16;
+          else if (tagName === 'h4') fontSize = 14;
+          else if (tagName === 'h5') fontSize = 12;
+          else if (tagName === 'h6') fontSize = 11;
+          
+          pdf.setFontSize(fontSize);
+          const lines = pdf.splitTextToSize(text, contentWidth);
+          const lineHeight = fontSize * 0.35 + 2;
+          
+          return lines.length * lineHeight + 5;
+        };
+        
+        // Parcourir tous les éléments et les ajouter au PDF
+        const processElements = (container: Element) => {
+          const children = container.children;
+          
+          for (let i = 0; i < children.length; i++) {
+            const element = children[i];
+            const tagName = element.tagName.toLowerCase();
+            
+            // IMPORTANT : Détecter les sauts de page et créer une nouvelle page PDF
+            if (element.className.includes('page-break')) {
+              console.log('🔄 Saut de page détecté → Nouvelle page PDF');
+              addNewPDFPage();
+              continue; // Ne pas traiter ce div, juste créer une nouvelle page
+            }
+            
+            // Ignorer les éléments de UI
+            if (element.className.includes('toolbar') || 
+                element.className.includes('hidden')) {
+              continue;
+            }
+            
+            // TRAITER LES IMAGES
+            if (tagName === 'img') {
+              const imgElement = element as HTMLImageElement;
+              const imgHeight = 50;
+              const imgWidth = contentWidth;
+              
+              // Vérifier l'espace disponible
+              if (yPosition + imgHeight > maxYContent) {
+                addNewPDFPage();
+              }
+              
+              try {
+                pdf.addImage(imgElement.src, 'PNG', margin, yPosition, imgWidth, imgHeight);
+                yPosition += imgHeight + 5;
+              } catch (e) {
+                console.error('Erreur insertion image:', e);
+              }
+              continue;
+            }
+            
+            // TRAITER LES TABLEAUX
+            if (tagName === 'table') {
+              const rows = element.querySelectorAll('tr');
+              if (rows.length === 0) continue;
+              
+              // Vérifier l'espace initial
+              if (yPosition + 20 > maxYContent) {
+                addNewPDFPage();
+              }
+              
+              const cells = rows[0].querySelectorAll('td, th');
+              const colCount = cells.length;
+              const cellWidth = contentWidth / colCount;
+              
+              pdf.setFontSize(10);
+              
+              rows.forEach((row, rowIdx) => {
+                const rowCells = row.querySelectorAll('td, th');
+                let rowHeight = 10;
+                
+                // Calculer la hauteur max de la ligne
+                rowCells.forEach(cell => {
+                  let cellText = '';
+                  for (let j = 0; j < cell.childNodes.length; j++) {
+                    const node = cell.childNodes[j];
+                    if (node.nodeType === Node.TEXT_NODE) {
+                      cellText += (node.textContent || '').trim();
+                    }
+                  }
+                  const lines = pdf.splitTextToSize(cellText, cellWidth - 2);
+                  rowHeight = Math.max(rowHeight, lines.length * 4 + 4);
+                });
+                
+                // Vérifier l'espace pour cette ligne
+                if (yPosition + rowHeight > maxYContent) {
+                  addNewPDFPage();
+                }
+                
+                // Dessiner les cellules
+                const isHeaderRow = row.querySelector('th') !== null;
+                let cellX = margin;
+                
+                rowCells.forEach((cell, colIdx) => {
+                  let cellText = '';
+                  for (let j = 0; j < cell.childNodes.length; j++) {
+                    const node = cell.childNodes[j];
+                    if (node.nodeType === Node.TEXT_NODE) {
+                      cellText += (node.textContent || '').trim();
+                    }
+                  }
+                  
+                  // Dessiner le rectangle
+                  pdf.setDrawColor(100);
+                  pdf.rect(cellX, yPosition, cellWidth, rowHeight);
+                  
+                  // Remplir en-têtes
+                  if (isHeaderRow) {
+                    pdf.setFillColor(220, 220, 220);
+                    pdf.rect(cellX, yPosition, cellWidth, rowHeight, 'F');
+                    pdf.setFont('helvetica', 'bold');
+                  } else {
+                    pdf.setFont('helvetica', 'normal');
+                  }
+                  
+                  // Écrire le texte
+                  const lines = pdf.splitTextToSize(cellText, cellWidth - 2);
+                  let textY = yPosition + 2;
+                  lines.forEach((line: string) => {
+                    pdf.text(line, cellX + 1, textY);
+                    textY += 4;
+                  });
+                  
+                  cellX += cellWidth;
+                });
+                
+                yPosition += rowHeight;
+              });
+              
+              yPosition += 5; // Espacement après tableau
+              continue;
+            }
+            
+            // TRAITER LE TEXTE
+            // Extraire le texte ET détecter si l'élément contient du bold/italic
+            let hasStrongChild = false;
+            let hasEmChild = false;
+            
+            const checkForStyles = (el: Element) => {
+              if (el.querySelector('strong, b')) hasStrongChild = true;
+              if (el.querySelector('em, i')) hasEmChild = true;
+            };
+            checkForStyles(element);
+            
+            const text = getCleanText(element);
+            if (!text || text.length === 0) continue;
+            
+            // Déterminer le style selon le tag
+            let fontSize = 11;
+            let isBold = false;
+            let isItalic = false;
+            let spacing = 4;
+            
+            if (tagName === 'h1') { fontSize = 22; isBold = true; spacing = 8; }
+            else if (tagName === 'h2') { fontSize = 18; isBold = true; spacing = 6; }
+            else if (tagName === 'h3') { fontSize = 16; isBold = true; spacing = 5; }
+            else if (tagName === 'h4') { fontSize = 14; isBold = true; spacing = 4; }
+            else if (tagName === 'h5') { fontSize = 12; isBold = true; spacing = 4; }
+            else if (tagName === 'h6') { fontSize = 11; isBold = true; spacing = 3; }
+            else if (tagName === 'li') { spacing = 3; }
+            else if (tagName === 'strong' || tagName === 'b') { isBold = true; }
+            else if (tagName === 'em' || tagName === 'i') { isItalic = true; }
+            
+            // Si le paragraphe contient des strong/em, traiter mot par mot
+            if ((tagName === 'p' || tagName === 'div') && (hasStrongChild || hasEmChild)) {
+              pdf.setFontSize(fontSize);
+              const lineHeight = fontSize * 0.35 + 2;
+              const xPos = margin;
+              
+              // Fonction récursive pour traiter chaque nœud
+              const renderNode = (node: Node) => {
+                if (node.nodeType === Node.TEXT_NODE) {
+                  const textContent = cleanMarkdown(node.textContent || '');
+                  if (!textContent) return;
+                  
+                  // Déterminer le style en remontant la hiérarchie des parents
+                  let fontStyle: 'normal' | 'bold' | 'italic' | 'bolditalic' = 'normal';
+                  let currentElement = node.parentElement;
+                  let isBold = false;
+                  let isItalic = false;
+                  
+                  // Remonter jusqu'à trouver un style ou atteindre l'élément racine
+                  while (currentElement && currentElement !== element) {
+                    const tagName = currentElement.tagName;
+                    const styles = window.getComputedStyle(currentElement);
+                    
+                    // Vérifier le gras
+                    if (tagName === 'STRONG' || 
+                        tagName === 'B' || 
+                        styles.fontWeight === 'bold' || 
+                        styles.fontWeight === '700' ||
+                        styles.fontWeight === '600') {
+                      isBold = true;
+                    }
+                    
+                    // Vérifier l'italique
+                    if (tagName === 'EM' || 
+                        tagName === 'I' || 
+                        styles.fontStyle === 'italic') {
+                      isItalic = true;
+                    }
+                    
+                    currentElement = currentElement.parentElement;
+                  }
+                  
+                  // Déterminer le style final
+                  if (isBold && isItalic) {
+                    fontStyle = 'bolditalic';
+                  } else if (isBold) {
+                    fontStyle = 'bold';
+                  } else if (isItalic) {
+                    fontStyle = 'italic';
+                  }
+                  
+                  pdf.setFont('helvetica', fontStyle);
+                  
+                  // Ajouter le texte ligne par ligne avec vérification de page
+                  const lines = pdf.splitTextToSize(textContent, contentWidth);
+                  lines.forEach((line: string) => {
+                    // Vérifier AVANT d'écrire chaque ligne si on dépasse
+                    if (yPosition + lineHeight > maxYContent) {
+                      addNewPDFPage();
+                      // Après addNewPDFPage, yPosition est réinitialisé à marginTop
+                    }
+                    pdf.text(line, xPos, yPosition);
+                    yPosition += lineHeight;
+                  });
+                } else if (node.nodeType === Node.ELEMENT_NODE) {
+                  const elem = node as Element;
+                  if (elem.classList.contains('page-break')) return;
+                  
+                  // Traiter récursivement les enfants
+                  elem.childNodes.forEach(child => renderNode(child));
+                }
+              };
+              
+              // Traiter tous les enfants de l'élément
+              element.childNodes.forEach(child => renderNode(child));
+              yPosition += spacing;
+            } else {
+              // Traitement simple pour les éléments sans styles mixtes
+              pdf.setFontSize(fontSize);
+              
+              let fontStyle = 'normal';
+              if (isBold) fontStyle = 'bold';
+              else if (isItalic) fontStyle = 'italic';
+              
+              pdf.setFont('helvetica', fontStyle);
+              
+              // Découper le texte et l'ajouter au PDF
+              const lines = pdf.splitTextToSize(text, contentWidth);
+              const lineHeight = fontSize * 0.35 + 2;
+              
+              lines.forEach((line: string) => {
+                // Vérifier l'espace AVANT d'ajouter chaque ligne
+                if (yPosition + lineHeight > maxYContent) {
+                  addNewPDFPage();
+                }
+                
+                const xPos = tagName === 'li' ? margin + 5 : margin;
+                pdf.text(line, xPos, yPosition);
+                yPosition += lineHeight;
+              });
+              
+              // Espacement après l'élément
+              yPosition += spacing;
+            }
+          }
+        };
+        
+        // Traiter tous les éléments du contenu
+        processElements(tempDiv);
+        
+        pdf.save(`document-${Date.now()}.pdf`);
+        showToast('success', '📄 Exporté en PDF - Pages A4 respectées');
+        break;
+        
+      case 'docx':
+        // Utiliser docx pour générer le DOCX
+        const doc = new Document({
+          sections: [{
+            properties: {},
+            children: textContent.split('\n').map(line => 
+              new Paragraph({
+                children: [new TextRun(line)]
+              })
+            )
+          }]
+        });
+        
+        Packer.toBlob(doc).then(blob => {
+          const docxUrl = URL.createObjectURL(blob);
+          const docxLink = document.createElement('a');
+          docxLink.href = docxUrl;
+          docxLink.download = `document-${Date.now()}.docx`;
+          docxLink.click();
+          showToast('success', '📄 Exporté en DOCX');
+        });
+        break;
     }
   };
 
@@ -3114,6 +4262,7 @@ Ce document PDF a été analysé et son contenu textuel complet est ci-dessus. L
                     const colorClasses = {
                       blue: 'bg-blue-500/20 text-blue-300 border-blue-500/30',
                       purple: 'bg-purple-500/20 text-purple-300 border-purple-500/30',
+                      violet: 'bg-violet-500/20 text-violet-300 border-violet-500/30',
                       pink: 'bg-pink-500/20 text-pink-300 border-pink-500/30',
                       orange: 'bg-orange-500/20 text-orange-300 border-orange-500/30',
                       green: 'bg-green-500/20 text-green-300 border-green-500/30',
@@ -3181,7 +4330,7 @@ Ce document PDF a été analysé et son contenu textuel complet est ci-dessus. L
                 }}
                 className="p-1 hover:bg-white/10 rounded"
               >
-                <Plus className="w-4 h-4 text-white" />
+                <Plus className="w-4 h-4 text-gray-700" />
               </button>
             </div>
             <div className="space-y-1 max-h-48 overflow-y-auto">
@@ -3248,27 +4397,30 @@ Ce document PDF a été analysé et son contenu textuel complet est ci-dessus. L
           </div>
           
           <div className="flex items-center gap-1 md:gap-2 flex-shrink-0">
-            {selectedChapter && (
-              <button
-                onClick={continueChapter}
-                disabled={isGenerating}
-                className="flex items-center gap-1 md:gap-2 px-2 md:px-4 py-2 bg-green-500 text-white rounded-lg hover:bg-green-600 disabled:opacity-50 transition-colors text-sm md:text-base"
-              >
-                <PlayCircle className="w-4 h-4" />
-                <span className="hidden md:inline">Continuer</span>
-              </button>
-            )}
-            {/* Bouton Galerie - Seulement l'icône */}
-            {selectedProject && messages.length > 0 && (
-              <button
-                onClick={() => {
-                  setShowGallery(!showGallery);
-                  if (!showGallery) {
-                    loadGallery(selectedProject?.id);
-                  }
-                }}
-                className={`p-2 rounded-lg transition-all ${
-                  showGallery 
+            {/* Cacher ces boutons pour l'éditeur IA */}
+            {selectedProject?.project_type !== 'ai-editor' && (
+              <>
+                {selectedChapter && (
+                  <button
+                    onClick={continueChapter}
+                    disabled={isGenerating}
+                    className="flex items-center gap-1 md:gap-2 px-2 md:px-4 py-2 bg-green-500 text-white rounded-lg hover:bg-green-600 disabled:opacity-50 transition-colors text-sm md:text-base"
+                  >
+                    <PlayCircle className="w-4 h-4" />
+                    <span className="hidden md:inline">Continuer</span>
+                  </button>
+                )}
+                {/* Bouton Galerie - Seulement l'icône */}
+                {selectedProject && messages.length > 0 && (
+                  <button
+                    onClick={() => {
+                      setShowGallery(!showGallery);
+                      if (!showGallery) {
+                        loadGallery(selectedProject?.id);
+                      }
+                    }}
+                    className={`p-2 rounded-lg transition-all ${
+                      showGallery 
                     ? 'bg-gradient-to-r from-pink-500 to-orange-500 text-white' 
                     : 'hover:bg-white/10 text-gray-400 hover:text-white'
                 }`}
@@ -3332,31 +4484,33 @@ Ce document PDF a été analysé et son contenu textuel complet est ci-dessus. L
                 <Settings className="w-5 h-5" />
               </button>
             )}
-            {messages.length > 0 && (
-              <button
-                onClick={clearConversation}
-                className="p-2 hover:bg-red-500/20 rounded-lg transition-colors group"
-                title="Vider la conversation"
-              >
-                <Eraser className="w-5 h-5 text-gray-400 group-hover:text-red-400" />
-              </button>
+                {messages.length > 0 && (
+                  <button
+                    onClick={clearConversation}
+                    className="p-2 hover:bg-red-500/20 rounded-lg transition-colors group"
+                    title="Vider la conversation"
+                  >
+                    <Eraser className="w-5 h-5 text-gray-400 group-hover:text-red-400" />
+                  </button>
+                )}
+                <button 
+                  onClick={exportToPDF}
+                  disabled={!selectedProject || (chapters.length === 0 && messages.length === 0)}
+                  className="p-2 hover:bg-white/10 rounded-lg transition-colors disabled:opacity-30"
+                  title="Exporter en PDF"
+                >
+                  <FileText className="w-4 h-4 md:w-5 md:h-5 text-white" />
+                </button>
+                <button 
+                  onClick={exportToWord}
+                  disabled={!selectedProject || (chapters.length === 0 && messages.length === 0)}
+                  className="p-2 hover:bg-white/10 rounded-lg transition-colors disabled:opacity-30"
+                  title="Exporter en Word"
+                >
+                  <Download className="w-4 h-4 md:w-5 md:h-5 text-white" />
+                </button>
+              </>
             )}
-            <button 
-              onClick={exportToPDF}
-              disabled={!selectedProject || (chapters.length === 0 && messages.length === 0)}
-              className="p-2 hover:bg-white/10 rounded-lg transition-colors disabled:opacity-30"
-              title="Exporter en PDF"
-            >
-              <FileText className="w-4 h-4 md:w-5 md:h-5 text-white" />
-            </button>
-            <button 
-              onClick={exportToWord}
-              disabled={!selectedProject || (chapters.length === 0 && messages.length === 0)}
-              className="p-2 hover:bg-white/10 rounded-lg transition-colors disabled:opacity-30"
-              title="Exporter en Word"
-            >
-              <Download className="w-4 h-4 md:w-5 md:h-5 text-white" />
-            </button>
           </div>
         </div>
 
@@ -3379,7 +4533,7 @@ Ce document PDF a été analysé et son contenu textuel complet est ci-dessus. L
                 </div>
                 <button
                   onClick={() => setShowGallery(false)}
-                  className="px-4 py-2 bg-white/10 hover:bg-white/20 text-white rounded-lg transition-colors"
+                  className="px-4 py-2 bg-gray-100 hover:bg-gray-200 text-white rounded-lg transition-colors"
                 >
                   Retour
                 </button>
@@ -3418,9 +4572,9 @@ Ce document PDF a été analysé et son contenu textuel complet est ci-dessus. L
                             : 'bg-purple-500/80'
                         } shadow-lg`}>
                           {item.projectType === 'chatbot' ? (
-                            <Sparkles className="w-4 h-4 text-white" />
+                            <Sparkles className="w-4 h-4 text-gray-700" />
                           ) : (
-                            <BookOpen className="w-4 h-4 text-white" />
+                            <BookOpen className="w-4 h-4 text-gray-700" />
                           )}
                         </div>
                       </div>
@@ -3448,6 +4602,630 @@ Ce document PDF a été analysé et son contenu textuel complet est ci-dessus. L
                   Créez un projet pour commencer ou discutez directement avec l'IA
                 </p>
               </div>
+            </div>
+          ) : selectedProject.project_type === 'ai-editor' ? (
+            /* ====== ÉDITEUR WYSIWYG AVEC ASSISTANCE IA ====== */
+            <div className="h-full flex flex-col bg-gray-50">
+              {/* Barre d'outils de formatage */}
+              <div className="bg-white border-b border-gray-200 shadow-sm p-2 sticky top-0 z-10">
+                <div className="flex flex-wrap gap-1 items-center">
+                  {/* Groupe : Undo/Redo */}
+                  <div className="flex gap-0.5 border-r border-gray-300 pr-2">
+                    <button
+                      onClick={handleUndo}
+                      disabled={historyIndexRef.current <= 0}
+                      className="p-2 hover:bg-gray-100 rounded transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
+                      title="Annuler (Ctrl+Z)"
+                    >
+                      <Undo className="w-4 h-4 text-gray-700" />
+                    </button>
+                    <button
+                      onClick={handleRedo}
+                      disabled={historyIndexRef.current >= historyRef.current.length - 1}
+                      className="p-2 hover:bg-gray-100 rounded transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
+                      title="Rétablir (Ctrl+Y)"
+                    >
+                      <Redo className="w-4 h-4 text-gray-700" />
+                    </button>
+                  </div>
+
+                  {/* Groupe : Formatage de base */}
+                  <div className="flex gap-0.5 border-r border-gray-300 pr-2">
+                    <button
+                      onClick={() => applyFormatting('bold')}
+                      className="p-2 hover:bg-gray-100 rounded transition-colors"
+                      title="Gras (Ctrl+B)"
+                    >
+                      <Bold className="w-4 h-4 text-gray-700" />
+                    </button>
+                    <button
+                      onClick={() => applyFormatting('italic')}
+                      className="p-2 hover:bg-gray-100 rounded transition-colors"
+                      title="Italique (Ctrl+I)"
+                    >
+                      <Italic className="w-4 h-4 text-gray-700" />
+                    </button>
+                    <button
+                      onClick={() => applyFormatting('underline')}
+                      className="p-2 hover:bg-gray-100 rounded transition-colors"
+                      title="Souligné (Ctrl+U)"
+                    >
+                      <Underline className="w-4 h-4 text-gray-700" />
+                    </button>
+                    <button
+                      onClick={() => applyFormatting('strikeThrough')}
+                      className="p-2 hover:bg-gray-100 rounded transition-colors"
+                      title="Barré"
+                    >
+                      <Strikethrough className="w-4 h-4 text-gray-700" />
+                    </button>
+                  </div>
+
+                  {/* Groupe : Titres */}
+                  <div className="flex gap-0.5 border-r border-gray-300 pr-2">
+                    <button
+                      onClick={() => applyFormatting('formatBlock', '<h1>')}
+                      className="p-2 hover:bg-gray-100 rounded transition-colors"
+                      title="Titre 1"
+                    >
+                      <Heading1 className="w-4 h-4 text-gray-700" />
+                    </button>
+                    <button
+                      onClick={() => applyFormatting('formatBlock', '<h2>')}
+                      className="p-2 hover:bg-gray-100 rounded transition-colors"
+                      title="Titre 2"
+                    >
+                      <Heading2 className="w-4 h-4 text-gray-700" />
+                    </button>
+                    <button
+                      onClick={() => applyFormatting('formatBlock', '<h3>')}
+                      className="p-2 hover:bg-gray-100 rounded transition-colors"
+                      title="Titre 3"
+                    >
+                      <Heading3 className="w-4 h-4 text-gray-700" />
+                    </button>
+                    <button
+                      onClick={() => applyFormatting('formatBlock', '<p>')}
+                      className="p-2 hover:bg-gray-100 rounded transition-colors"
+                      title="Paragraphe normal"
+                    >
+                      <Type className="w-4 h-4 text-gray-700" />
+                    </button>
+                  </div>
+
+                  {/* Groupe : Alignement */}
+                  <div className="flex gap-1 border-r border-gray-300 pr-2">
+                    <button
+                      onClick={() => applyFormatting('justifyLeft')}
+                      className="p-2 hover:bg-gray-100 rounded transition-colors"
+                      title="Aligner à gauche"
+                    >
+                      <AlignLeft className="w-4 h-4 text-gray-700" />
+                    </button>
+                    <button
+                      onClick={() => applyFormatting('justifyCenter')}
+                      className="p-2 hover:bg-gray-100 rounded transition-colors"
+                      title="Centrer"
+                    >
+                      <AlignCenter className="w-4 h-4 text-gray-700" />
+                    </button>
+                    <button
+                      onClick={() => applyFormatting('justifyRight')}
+                      className="p-2 hover:bg-gray-100 rounded transition-colors"
+                      title="Aligner à droite"
+                    >
+                      <AlignRight className="w-4 h-4 text-gray-700" />
+                    </button>
+                    <button
+                      onClick={() => applyFormatting('justifyFull')}
+                      className="p-2 hover:bg-gray-100 rounded transition-colors"
+                      title="Justifier"
+                    >
+                      <AlignJustify className="w-4 h-4 text-gray-700" />
+                    </button>
+                  </div>
+
+                  {/* Groupe : Listes */}
+                  <div className="flex gap-1 border-r border-gray-300 pr-2">
+                    <button
+                      onClick={() => applyFormatting('insertUnorderedList')}
+                      className="p-2 hover:bg-gray-100 rounded transition-colors"
+                      title="Liste à puces"
+                    >
+                      <List className="w-4 h-4 text-gray-700" />
+                    </button>
+                    <button
+                      onClick={() => applyFormatting('insertOrderedList')}
+                      className="p-2 hover:bg-gray-100 rounded transition-colors"
+                      title="Liste numérotée"
+                    >
+                      <ListOrdered className="w-4 h-4 text-gray-700" />
+                    </button>
+                  </div>
+
+                  {/* Groupe : Autres */}
+                  <div className="flex gap-1 border-r border-gray-300 pr-2">
+                    <button
+                      onClick={() => applyFormatting('formatBlock', '<blockquote>')}
+                      className="p-2 hover:bg-gray-100 rounded transition-colors"
+                      title="Citation"
+                    >
+                      <Quote className="w-4 h-4 text-gray-700" />
+                    </button>
+                    <button
+                      onClick={() => applyFormatting('formatBlock', '<pre>')}
+                      className="p-2 hover:bg-gray-100 rounded transition-colors"
+                      title="Code"
+                    >
+                      <Code className="w-4 h-4 text-gray-700" />
+                    </button>
+                    <button
+                      onClick={() => {
+                        const url = prompt('Entrez l\'URL du lien:');
+                        if (url) applyFormatting('createLink', url);
+                      }}
+                      className="p-2 hover:bg-gray-100 rounded transition-colors"
+                      title="Insérer un lien"
+                    >
+                      <Link className="w-4 h-4 text-gray-700" />
+                    </button>
+                  </div>
+
+                  {/* Groupe : Tableaux, Images & Pages */}
+                  <div className="flex gap-1 border-r border-gray-300 pr-2">
+                    <button
+                      onClick={() => setShowTableModal(true)}
+                      className="p-2 hover:bg-gray-100 rounded transition-colors"
+                      title="Insérer un tableau"
+                    >
+                      <Table className="w-4 h-4 text-gray-700" />
+                    </button>
+                    <button
+                      onClick={() => imageInputRef.current?.click()}
+                      className="p-2 hover:bg-gray-100 rounded transition-colors"
+                      title="Insérer une image"
+                    >
+                      <ImageIcon className="w-4 h-4 text-gray-700" />
+                    </button>
+                    <button
+                      onClick={addNewPage}
+                      className="p-2 hover:bg-gray-100 rounded transition-colors"
+                      title="Saut de page"
+                    >
+                      <FileText className="w-4 h-4 text-gray-700" />
+                    </button>
+                    <input
+                      ref={imageInputRef}
+                      type="file"
+                      accept="image/*"
+                      onChange={(e) => {
+                        const file = e.target.files?.[0];
+                        if (file) {
+                          insertImage(file);
+                          // Réinitialiser l'input pour permettre de sélectionner le même fichier à nouveau
+                          e.target.value = '';
+                        }
+                      }}
+                      className="hidden"
+                    />
+                  </div>
+
+                  {/* Couleurs avec icônes claires */}
+                  <div className="flex gap-1 border-l border-gray-300 pl-2">
+                    <div className="relative">
+                      <input
+                        type="color"
+                        id="text-color"
+                        onChange={(e) => applyFormatting('foreColor', e.target.value)}
+                        className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+                        title="Couleur du texte"
+                      />
+                      <label htmlFor="text-color" className="flex items-center justify-center w-8 h-8 bg-gray-100 hover:bg-gray-200 rounded-lg cursor-pointer transition-colors">
+                        <div className="relative">
+                          <Type className="w-4 h-4 text-gray-700" />
+                          <div className="absolute -bottom-0.5 left-0 right-0 h-1 bg-red-500 rounded-full"></div>
+                        </div>
+                      </label>
+                    </div>
+                    <div className="relative">
+                      <input
+                        type="color"
+                        id="bg-color"
+                        onChange={(e) => applyFormatting('hiliteColor', e.target.value)}
+                        className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+                        title="Couleur de fond"
+                      />
+                      <label htmlFor="bg-color" className="flex items-center justify-center w-8 h-8 bg-gray-100 hover:bg-gray-200 rounded-lg cursor-pointer transition-colors">
+                        <Highlighter className="w-4 h-4 text-yellow-400" />
+                      </label>
+                    </div>
+                  </div>
+
+                  {/* Boutons d'export */}
+                  <div className="flex gap-1 border-l border-gray-300 pl-2 ml-auto">
+                    <div className="relative group">
+                      <button
+                        className="px-3 py-2 bg-gradient-to-r from-green-500 to-emerald-500 text-white rounded-lg hover:opacity-90 transition-opacity flex items-center gap-2"
+                        title="Exporter le document"
+                      >
+                        <Download className="w-4 h-4" />
+                        <span className="text-sm font-medium">Exporter</span>
+                      </button>
+                      
+                      {/* Menu déroulant */}
+                      <div className="absolute right-0 top-full mt-2 opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-200 z-20">
+                        <div className="bg-slate-800 border border-white/20 rounded-lg shadow-xl overflow-hidden min-w-[160px]">
+                          <button
+                            onClick={() => exportEditorContent('pdf')}
+                            className="w-full px-4 py-2.5 flex items-center gap-3 text-white hover:bg-white/10 transition-colors text-left"
+                          >
+                            <FileText className="w-4 h-4 text-red-400" />
+                            <span className="text-sm font-medium">PDF</span>
+                          </button>
+                          <button
+                            onClick={() => exportEditorContent('docx')}
+                            className="w-full px-4 py-2.5 flex items-center gap-3 text-white hover:bg-white/10 transition-colors text-left border-t border-white/10"
+                          >
+                            <FileText className="w-4 h-4 text-blue-400" />
+                            <span className="text-sm font-medium">DOCX</span>
+                          </button>
+                          <button
+                            onClick={() => exportEditorContent('html')}
+                            className="w-full px-4 py-2.5 flex items-center gap-3 text-white hover:bg-white/10 transition-colors text-left border-t border-white/10"
+                          >
+                            <Code className="w-4 h-4 text-orange-400" />
+                            <span className="text-sm font-medium">HTML</span>
+                          </button>
+                          <button
+                            onClick={() => exportEditorContent('txt')}
+                            className="w-full px-4 py-2.5 flex items-center gap-3 text-white hover:bg-white/10 transition-colors text-left border-t border-white/10"
+                          >
+                            <File className="w-4 h-4 text-gray-400" />
+                            <span className="text-sm font-medium">TXT</span>
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Indicateur IA */}
+                <div className="mt-3 pt-3 border-t border-gray-300">
+                  <p className="text-xs text-purple-600 flex items-center gap-2">
+                    <Sparkles className="w-4 h-4" />
+                    <span>💡 Sélectionnez du texte pour afficher les options d'assistance IA</span>
+                  </p>
+                </div>
+              </div>
+
+              {/* Zone d'édition - Style Word avec fond blanc et pages séparées */}
+              <div className="flex-1 overflow-y-auto bg-gray-50 p-8">
+                <style>{`
+                  /* Styles pour les images dans l'éditeur */
+                  div[contenteditable] img {
+                    max-width: 100%;
+                    height: auto;
+                    cursor: pointer;
+                    transition: transform 0.2s, box-shadow 0.2s;
+                    border-radius: 8px;
+                    box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+                    margin: 10px 0;
+                  }
+                  div[contenteditable] img:hover {
+                    transform: scale(1.02);
+                    box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+                  }
+                  div[contenteditable] img:active {
+                    cursor: move;
+                  }
+                  /* Styles pour les tableaux */
+                  div[contenteditable] table {
+                    border-collapse: collapse;
+                    width: 100%;
+                    margin: 10px 0;
+                  }
+                  div[contenteditable] table td,
+                  div[contenteditable] table th {
+                    border: 1px solid #333;
+                    padding: 8px;
+                    text-align: left;
+                  }
+                  div[contenteditable] table th {
+                    background-color: #f0f0f0;
+                    font-weight: bold;
+                  }
+                  /* Limitation stricte de la hauteur A4 */
+                  div[contenteditable] {
+                    overflow-wrap: break-word;
+                    word-break: break-word;
+                  }
+                  /* Style pour les sauts de page - Séparation claire entre pages */
+                  div[contenteditable] .page-break {
+                    display: block;
+                    margin: 20px -2cm;
+                    padding: 12px 0;
+                    width: calc(100% + 4cm);
+                    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+                    text-align: center;
+                    color: white;
+                    font-weight: 700;
+                    font-size: 12px;
+                    letter-spacing: 2px;
+                    text-transform: uppercase;
+                    box-shadow: 0 8px 16px -4px rgba(102, 126, 234, 0.4);
+                    page-break-after: always;
+                    user-select: none;
+                    border-top: 3px solid rgba(255,255,255,0.3);
+                    border-bottom: 3px solid rgba(0,0,0,0.2);
+                  }
+                  /* Espacement après saut de page pour simuler nouvelle page */
+                  div[contenteditable] .page-break + * {
+                    margin-top: 40px;
+                    padding-top: 20px;
+                    border-top: 1px dashed #e0e0e0;
+                  }
+                  /* Conteneur d'éditeur avec pages multiples simulées */
+                  .editor-pages-container {
+                    display: flex;
+                    flex-direction: column;
+                    gap: 20px;
+                  }
+                  /* Pseudo-élément pour simuler fin de page A4 */
+                  div[contenteditable]::after {
+                    content: '';
+                    display: block;
+                    height: 2px;
+                    background: linear-gradient(90deg, transparent, #667eea, transparent);
+                    margin: 20px -2cm 0;
+                    width: calc(100% + 4cm);
+                    opacity: 0.3;
+                  }
+                `}</style>
+                <div
+                  ref={editorRef}
+                  contentEditable
+                  onMouseUp={handleTextSelection}
+                  onKeyUp={handleTextSelection}
+                  className="max-w-[21cm] mx-auto bg-white shadow-2xl outline-none border border-gray-200 rounded-sm"
+                  style={{
+                    minHeight: '29.7cm',
+                    height: 'auto',
+                    padding: '2.5cm 2cm',
+                    fontSize: '12pt',
+                    lineHeight: '1.5',
+                    color: '#000000',
+                    fontFamily: 'Arial, sans-serif',
+                    position: 'relative'
+                  }}
+                  suppressContentEditableWarning
+                  onInput={(e) => {
+                    // Supprimer le placeholder quand l'utilisateur commence à écrire
+                    const target = e.currentTarget;
+                    if (target.textContent && target.querySelector('p[style*="color: #999"]')) {
+                      target.innerHTML = target.textContent;
+                    }
+                  }}
+                >
+                  <p style={{ color: '#999999', margin: 0, pointerEvents: 'none' }}>Commencez à écrire ici...</p>
+                </div>
+              </div>
+
+              {/* Menu IA contextuel */}
+              <AnimatePresence>
+                {showAIMenu && (
+                  <motion.div
+                    initial={{ opacity: 0, scale: 0.9, y: 10 }}
+                    animate={{ opacity: 1, scale: 1, y: 0 }}
+                    exit={{ opacity: 0, scale: 0.9, y: 10 }}
+                    style={{
+                      position: 'fixed',
+                      left: aiMenuPosition.x,
+                      top: aiMenuPosition.y,
+                      transform: 'translate(-50%, -100%)',
+                      zIndex: 50
+                    }}
+                    className="bg-slate-800 border border-purple-500/50 rounded-xl shadow-2xl p-2 min-w-[200px] relative"
+                  >
+                    {/* Bouton fermer */}
+                    <button
+                      onClick={() => {
+                        setShowAIMenu(false);
+                        setCustomAIPrompt('');
+                      }}
+                      className="absolute -top-2 -right-2 w-6 h-6 bg-red-500 hover:bg-red-600 rounded-full flex items-center justify-center text-white shadow-lg transition-colors"
+                      title="Fermer"
+                    >
+                      <X className="w-4 h-4" />
+                    </button>
+                    <div className="grid grid-cols-2 gap-1">
+                      <button
+                        onClick={() => handleAICommand('improve')}
+                        className="px-3 py-2 text-sm text-left hover:bg-purple-500/20 rounded-lg transition-colors text-white flex items-center gap-2"
+                      >
+                        <Sparkles className="w-3 h-3" /> Améliorer
+                      </button>
+                      <button
+                        onClick={() => handleAICommand('shorter')}
+                        className="px-3 py-2 text-sm text-left hover:bg-purple-500/20 rounded-lg transition-colors text-white flex items-center gap-2"
+                      >
+                        <Minimize2 className="w-3 h-3" /> Réduire
+                      </button>
+                      <button
+                        onClick={() => handleAICommand('longer')}
+                        className="px-3 py-2 text-sm text-left hover:bg-purple-500/20 rounded-lg transition-colors text-white flex items-center gap-2"
+                      >
+                        <MoreHorizontal className="w-3 h-3" /> Développer
+                      </button>
+                      <button
+                        onClick={() => handleAICommand('simplify')}
+                        className="px-3 py-2 text-sm text-left hover:bg-purple-500/20 rounded-lg transition-colors text-white flex items-center gap-2"
+                      >
+                        <Type className="w-3 h-3" /> Simplifier
+                      </button>
+                      <button
+                        onClick={() => handleAICommand('professional')}
+                        className="px-3 py-2 text-sm text-left hover:bg-purple-500/20 rounded-lg transition-colors text-white flex items-center gap-2"
+                      >
+                        <Briefcase className="w-3 h-3" /> Pro
+                      </button>
+                      <button
+                        onClick={() => handleAICommand('casual')}
+                        className="px-3 py-2 text-sm text-left hover:bg-purple-500/20 rounded-lg transition-colors text-white flex items-center gap-2"
+                      >
+                        <MessageSquare className="w-3 h-3" /> Décontracté
+                      </button>
+                      <button
+                        onClick={() => handleAICommand('fix')}
+                        className="px-3 py-2 text-sm text-left hover:bg-purple-500/20 rounded-lg transition-colors text-white flex items-center gap-2"
+                      >
+                        <CheckCircle className="w-3 h-3" /> Corriger
+                      </button>
+                      <button
+                        onClick={() => handleAICommand('continue')}
+                        className="px-3 py-2 text-sm text-left hover:bg-purple-500/20 rounded-lg transition-colors text-white flex items-center gap-2"
+                      >
+                        <PlayCircle className="w-3 h-3" /> Continuer
+                      </button>
+                      <button
+                        onClick={() => handleAICommand('translate-en')}
+                        className="px-3 py-2 text-sm text-left hover:bg-purple-500/20 rounded-lg transition-colors text-white flex items-center gap-2"
+                      >
+                        <Globe className="w-3 h-3" /> 🇬🇧 EN
+                      </button>
+                      <button
+                        onClick={() => handleAICommand('translate-fr')}
+                        className="px-3 py-2 text-sm text-left hover:bg-purple-500/20 rounded-lg transition-colors text-white flex items-center gap-2"
+                      >
+                        <Globe className="w-3 h-3" /> 🇫🇷 FR
+                      </button>
+                    </div>
+                    
+                    {/* Commande personnalisée */}
+                    <div className="mt-2 pt-2 border-t border-white/10">
+                      <p className="text-xs text-purple-300 mb-2 flex items-center gap-1">
+                        <Wand2 className="w-3 h-3" />
+                        <span>Commande personnalisée :</span>
+                      </p>
+                      <div className="flex gap-2">
+                        <input
+                          type="text"
+                          value={customAIPrompt}
+                          onChange={(e) => setCustomAIPrompt(e.target.value)}
+                          onKeyPress={(e) => {
+                            if (e.key === 'Enter' && customAIPrompt.trim()) {
+                              handleAICommand('custom');
+                            }
+                          }}
+                          placeholder="Ex: Ajoute un titre, crée un tableau..."
+                          className="flex-1 px-2 py-1.5 bg-white/10 border border-white/20 rounded text-white text-xs placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-purple-500"
+                          disabled={isProcessingAI}
+                          autoComplete="off"
+                        />
+                        <button
+                          onClick={() => handleAICommand('custom')}
+                          disabled={!customAIPrompt.trim() || isProcessingAI}
+                          className="px-3 py-1.5 bg-gradient-to-r from-purple-500 to-pink-500 text-white rounded text-xs hover:opacity-90 disabled:opacity-50 transition-opacity flex items-center gap-1"
+                        >
+                          {isProcessingAI ? (
+                            <Loader2 className="w-3 h-3 animate-spin" />
+                          ) : (
+                            <Send className="w-3 h-3" />
+                          )}
+                        </button>
+                      </div>
+                      {isProcessingAI && (
+                        <p className="text-xs text-yellow-300 mt-2 animate-pulse">
+                          ⚡ En cours...
+                        </p>
+                      )}
+                    </div>
+                    
+                    <button
+                      onClick={() => setShowAIMenu(false)}
+                      className="w-full mt-2 px-3 py-2 text-xs bg-red-500/20 hover:bg-red-500/30 rounded-lg transition-colors text-red-300"
+                    >
+                      Fermer
+                    </button>
+                  </motion.div>
+                )}
+              </AnimatePresence>
+
+              {/* Modal pour insérer un tableau */}
+              <AnimatePresence>
+                {showTableModal && (
+                  <motion.div
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    exit={{ opacity: 0 }}
+                    className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50"
+                    onClick={() => setShowTableModal(false)}
+                  >
+                    <motion.div
+                      initial={{ scale: 0.9, opacity: 0 }}
+                      animate={{ scale: 1, opacity: 1 }}
+                      exit={{ scale: 0.9, opacity: 0 }}
+                      onClick={(e) => e.stopPropagation()}
+                      className="bg-white rounded-2xl p-6 w-full max-w-md shadow-2xl"
+                    >
+                      <h3 className="text-xl font-bold text-gray-900 mb-4 flex items-center gap-2">
+                        <Table className="w-5 h-5 text-purple-600" />
+                        Insérer un tableau
+                      </h3>
+                      
+                      <div className="space-y-4">
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-2">
+                            Nombre de lignes
+                          </label>
+                          <input
+                            type="number"
+                            min="1"
+                            max="20"
+                            value={tableRows}
+                            onChange={(e) => setTableRows(parseInt(e.target.value) || 1)}
+                            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500 text-black font-semibold"
+                          />
+                        </div>
+                        
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-2">
+                            Nombre de colonnes
+                          </label>
+                          <input
+                            type="number"
+                            min="1"
+                            max="10"
+                            value={tableCols}
+                            onChange={(e) => setTableCols(parseInt(e.target.value) || 1)}
+                            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500 text-black font-semibold"
+                          />
+                        </div>
+                        
+                        <div className="bg-gray-50 p-3 rounded-lg">
+                          <p className="text-xs text-gray-600">
+                            📋 Le tableau aura <span className="font-semibold text-purple-600">{tableRows} lignes</span> et <span className="font-semibold text-purple-600">{tableCols} colonnes</span>
+                          </p>
+                        </div>
+                      </div>
+                      
+                      <div className="flex gap-3 mt-6">
+                        <button
+                          onClick={() => setShowTableModal(false)}
+                          className="flex-1 px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors font-medium"
+                        >
+                          Annuler
+                        </button>
+                        <button
+                          onClick={insertTable}
+                          className="flex-1 px-4 py-2 bg-gradient-to-r from-purple-500 to-pink-500 text-white rounded-lg hover:opacity-90 transition-opacity font-medium"
+                        >
+                          Insérer
+                        </button>
+                      </div>
+                    </motion.div>
+                  </motion.div>
+                )}
+              </AnimatePresence>
             </div>
           ) : messages.length === 0 ? (
             // Projet sélectionné mais vide - Afficher message d'accueil selon le type
@@ -3566,7 +5344,7 @@ Ce document PDF a été analysé et son contenu textuel complet est ci-dessus. L
                           <div className="flex gap-2 justify-end">
                             <button
                               onClick={cancelEditMessage}
-                              className="px-3 py-1 text-sm bg-white/10 hover:bg-white/20 rounded-lg transition-colors"
+                              className="px-3 py-1 text-sm bg-gray-100 hover:bg-gray-200 rounded-lg transition-colors"
                             >
                               Annuler
                             </button>
@@ -4007,7 +5785,7 @@ Ce document PDF a été analysé et son contenu textuel complet est ci-dessus. L
           >
             <button
               onClick={() => setZoomedImage(null)}
-              className="absolute top-4 right-4 p-3 bg-white/10 hover:bg-white/20 rounded-full transition-colors z-10"
+              className="absolute top-4 right-4 p-3 bg-gray-100 hover:bg-gray-200 rounded-full transition-colors z-10"
               title="Fermer (Esc)"
             >
               <X className="w-6 h-6 text-white" />
@@ -4070,6 +5848,7 @@ Ce document PDF a été analysé et son contenu textuel complet est ci-dessus. L
                       const colorClasses = {
                         blue: 'peer-checked:border-blue-500 peer-checked:bg-blue-500/10 hover:border-blue-400/50',
                         purple: 'peer-checked:border-purple-500 peer-checked:bg-purple-500/10 hover:border-purple-400/50',
+                        violet: 'peer-checked:border-violet-500 peer-checked:bg-violet-500/10 hover:border-violet-400/50',
                         pink: 'peer-checked:border-pink-500 peer-checked:bg-pink-500/10 hover:border-pink-400/50',
                         orange: 'peer-checked:border-orange-500 peer-checked:bg-orange-500/10 hover:border-orange-400/50',
                         green: 'peer-checked:border-green-500 peer-checked:bg-green-500/10 hover:border-green-400/50',
@@ -4213,7 +5992,7 @@ Ce document PDF a été analysé et son contenu textuel complet est ci-dessus. L
               <div className="p-6 bg-slate-900/50 border-t border-white/10 flex gap-3">
                 <button
                   onClick={confirmDialog.onCancel}
-                  className="flex-1 px-4 py-3 bg-white/10 hover:bg-white/20 text-white rounded-lg transition-colors font-medium"
+                  className="flex-1 px-4 py-3 bg-gray-100 hover:bg-gray-200 text-white rounded-lg transition-colors font-medium"
                 >
                   {confirmDialog.cancelText || 'Annuler'}
                 </button>
@@ -4285,7 +6064,7 @@ Ce document PDF a été analysé et son contenu textuel complet est ci-dessus. L
               <div className="p-6 bg-slate-900/50 border-t border-white/10 flex gap-3">
                 <button
                   onClick={inputDialog.onCancel}
-                  className="flex-1 px-4 py-3 bg-white/10 hover:bg-white/20 text-white rounded-lg transition-colors font-medium"
+                  className="flex-1 px-4 py-3 bg-gray-100 hover:bg-gray-200 text-white rounded-lg transition-colors font-medium"
                 >
                   {inputDialog.cancelText || 'Annuler'}
                 </button>
