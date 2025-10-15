@@ -2,7 +2,6 @@ import { NextRequest, NextResponse } from 'next/server';
 import { writeFile, unlink } from 'fs/promises';
 import { join } from 'path';
 import { tmpdir } from 'os';
-import * as pdf from 'pdf-parse';
 
 export async function POST(request: NextRequest): Promise<Response> {
   let tempFilePath: string | null = null;
@@ -19,8 +18,14 @@ export async function POST(request: NextRequest): Promise<Response> {
     tempFilePath = join(tmpdir(), `pdf_${Date.now()}_${file.name}`);
     await writeFile(tempFilePath, buffer);
 
-    const parse = (pdf as any).default ?? pdf;
+    // Import dynamique au runtime seulement
+    const pdfModule = await import('pdf-parse').catch(() => null);
+    if (!pdfModule) {
+      return NextResponse.json({ error: 'Parser non disponible' }, { status: 500 });
+    }
+    const parse = (pdfModule as any).default ?? pdfModule;
     const data = await parse(buffer);
+
     const text = data?.text ?? '';
     const numPages = Number(data?.numpages ?? 0);
 
