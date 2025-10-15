@@ -2,34 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { writeFile, unlink } from 'fs/promises';
 import { join } from 'path';
 import { tmpdir } from 'os';
-
-// Parse PDF using pdf.js-extract which is already in dependencies
-async function parsePdfWithPdfJsExtract(filePath: string): Promise<{ text: string; numPages: number }> {
-  // Use dynamic import to avoid type issues if types aren't present
-  const { PDFExtract } = await import('pdf.js-extract');
-  const extractor = new PDFExtract();
-
-  return new Promise((resolve, reject) => {
-    extractor.extract(filePath, {}, (err: any, data: any) => {
-      if (err) return reject(err);
-
-      const pages = data?.pages || [];
-      let fullText = '';
-
-      for (const page of pages) {
-        const content = page?.content || [];
-        for (const item of content) {
-          if (item?.str) {
-            fullText += String(item.str) + ' ';
-          }
-        }
-        fullText += '\n';
-      }
-
-      resolve({ text: fullText.trim(), numPages: pages.length });
-    });
-  });
-}
+import pdf from 'pdf-parse';
 
 export async function POST(request: NextRequest): Promise<Response> {
   let tempFilePath: string | null = null;
@@ -52,12 +25,14 @@ export async function POST(request: NextRequest): Promise<Response> {
     tempFilePath = join(tmpdir(), `pdf_${Date.now()}_${file.name}`);
     await writeFile(tempFilePath, buffer);
 
-    // Parse PDF and extract text
-    const { text, numPages } = await parsePdfWithPdfJsExtract(tempFilePath);
+    // Parse PDF with pdf-parse
+    const data = await pdf(buffer);
+    const text = data?.text ?? '';
+    const numPages = Number(data?.numpages ?? 0);
 
     return NextResponse.json({
       success: true,
-      text,
+      text: text.trim(),
       numPages,
       fileName: file.name,
       fileSize: file.size
