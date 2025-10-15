@@ -800,15 +800,54 @@ export default function Home() {
         console.log('📏 Longueur texte nettoyé:', cleanText.length);
         
         const utterance = new SpeechSynthesisUtterance(cleanText);
-        utterance.lang = isArabicText(fullContent) ? 'ar-SA' : 'fr-FR';
+        const isArabic = isArabicText(fullContent);
         utterance.rate = speechRate;
         utterance.pitch = 1.0;
         utterance.volume = 1.0;
         
+        // Sélectionner la MEILLEURE voix pour la langue
+        const voices = window.speechSynthesis.getVoices();
+        let selectedVoice = null;
+        
+        if (voices.length > 0) {
+          if (isArabic) {
+            // Chercher une voix arabe de qualité
+            selectedVoice = voices.find(v => v.lang.startsWith('ar') && v.localService) // Locale d'abord
+              || voices.find(v => v.lang.startsWith('ar')); // Sinon n'importe quelle voix arabe
+            
+            if (!selectedVoice) {
+              console.log('⚠️ Aucune voix arabe trouvée');
+              showToast('info', '🔊 Voix arabe non disponible, utilisez les paramètres système pour en ajouter une');
+            }
+          } else {
+            // Chercher la MEILLEURE voix française
+            // Prioriser : Google > Microsoft > Voix locales > Autres
+            selectedVoice = voices.find(v => v.lang === 'fr-FR' && v.name.includes('Google'))
+              || voices.find(v => v.lang === 'fr-FR' && v.name.includes('Microsoft'))
+              || voices.find(v => v.lang === 'fr-FR' && v.localService)
+              || voices.find(v => v.lang.startsWith('fr-'))
+              || voices.find(v => v.lang.startsWith('fr'));
+            
+            if (selectedVoice) {
+              console.log('✅ Voix française sélectionnée:', selectedVoice.name, '|', selectedVoice.lang);
+            } else {
+              console.log('⚠️ Aucune voix française trouvée, utilisation voix par défaut');
+            }
+          }
+          
+          if (selectedVoice) {
+            utterance.voice = selectedVoice;
+          }
+        }
+        
+        utterance.lang = isArabic ? 'ar-SA' : 'fr-FR';
+        
         console.log('🗣️ Configuration utterance:', {
           lang: utterance.lang,
           rate: utterance.rate,
-          textLength: cleanText.length
+          textLength: cleanText.length,
+          voiceName: utterance.voice?.name || 'default',
+          voiceLang: utterance.voice?.lang || 'none'
         });
         
         utterance.onstart = () => {
@@ -839,7 +878,35 @@ export default function Home() {
         };
         
         console.log('🚀 Lancement de speechSynthesis.speak()...');
-        window.speechSynthesis.speak(utterance);
+        
+        // S'assurer que les voix sont chargées avant de parler
+        const speakWithVoices = () => {
+          const availableVoices = window.speechSynthesis.getVoices();
+          if (availableVoices.length > 0 && !utterance.voice) {
+            // Re-sélectionner la meilleure voix maintenant que la liste est chargée
+            const isArabic = isArabicText(fullContent);
+            const bestVoice = isArabic
+              ? availableVoices.find(v => v.lang.startsWith('ar') && v.localService) || availableVoices.find(v => v.lang.startsWith('ar'))
+              : availableVoices.find(v => v.lang === 'fr-FR' && v.name.includes('Google'))
+                || availableVoices.find(v => v.lang === 'fr-FR' && v.name.includes('Microsoft'))
+                || availableVoices.find(v => v.lang === 'fr-FR' && v.localService)
+                || availableVoices.find(v => v.lang.startsWith('fr'));
+            
+            if (bestVoice) {
+              utterance.voice = bestVoice;
+              console.log('✅ Voix re-sélectionnée après chargement:', bestVoice.name);
+            }
+          }
+          window.speechSynthesis.speak(utterance);
+        };
+        
+        if (window.speechSynthesis.getVoices().length === 0) {
+          console.log('⏳ En attente du chargement des voix...');
+          window.speechSynthesis.addEventListener('voiceschanged', speakWithVoices, { once: true });
+        } else {
+          speakWithVoices();
+        }
+        
         console.log('✅ speechSynthesis.speak() appelé');
       } else {
         console.log('⚠️ Conditions non remplies pour speech synthesis');
@@ -881,6 +948,13 @@ export default function Home() {
       showToast('warning', 'Veuillez sélectionner un projet d\'abord');
       return;
     }
+    
+    // Afficher les voix disponibles pour debug
+    const voices = window.speechSynthesis.getVoices();
+    console.log('🗣️ Voix disponibles sur ce système:', voices.length);
+    voices.forEach((voice, i) => {
+      console.log(`  ${i + 1}. ${voice.name} (${voice.lang}) ${voice.localService ? '🏠 Local' : '☁️ Remote'} ${voice.default ? '⭐ Défaut' : ''}`);
+    });
     
     console.log('✅ Démarrage de l\'appel vocal...');
     setIsVoiceCallActive(true);
