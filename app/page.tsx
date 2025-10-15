@@ -342,12 +342,23 @@ export default function Home() {
   const [speechButtonRef, setSpeechButtonRef] = useState<HTMLButtonElement | null>(null);
   const speechSettingsRef = useRef<HTMLButtonElement>(null);
   
-  // États pour l'appel vocal (Push-to-Talk)
+  // États pour l'appel vocal (Push-to-Talk avec enregistrement audio)
   const [isVoiceCallActive, setIsVoiceCallActive] = useState<boolean>(false);
   const [isPushingToTalk, setIsPushingToTalk] = useState<boolean>(false); // Maintien du bouton
   const [isAISpeaking, setIsAISpeaking] = useState<boolean>(false);
   const [voiceTranscript, setVoiceTranscript] = useState<string>('');
-  const [recognition, setRecognition] = useState<any>(null);
+  const [isTranscribing, setIsTranscribing] = useState<boolean>(false);
+  
+  // État pour l'enregistrement vocal rapide (sans appel)
+  const [isQuickRecording, setIsQuickRecording] = useState<boolean>(false);
+  
+  // MediaRecorder pour l'enregistrement audio
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const audioChunksRef = useRef<Blob[]>([]);
+  const mediaStreamRef = useRef<MediaStream | null>(null);
+  const quickRecorderRef = useRef<MediaRecorder | null>(null);
+  const quickAudioChunksRef = useRef<Blob[]>([]);
+  const quickStreamRef = useRef<MediaStream | null>(null);
   
   // Refs pour garder les valeurs à jour dans les callbacks
   const selectedProjectRef = useRef<Project | null>(null);
@@ -570,58 +581,8 @@ export default function Home() {
     speechSynthesis.speak(utterance);
   };
 
-  // Initialiser la reconnaissance vocale
-  useEffect(() => {
-    if (typeof window !== 'undefined') {
-      const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
-      
-      if (SpeechRecognition) {
-        const recognitionInstance = new SpeechRecognition();
-        recognitionInstance.continuous = true;
-        recognitionInstance.interimResults = true;
-        recognitionInstance.lang = 'fr-FR'; // Langue par défaut
-        
-        recognitionInstance.onresult = (event: any) => {
-          // Mode Push-to-Talk : Capturer TOUT le transcript pendant que le bouton est maintenu
-          let interimTranscript = '';
-          let finalTranscript = '';
-          
-          for (let i = event.resultIndex; i < event.results.length; i++) {
-            const transcript = event.results[i][0].transcript;
-            if (event.results[i].isFinal) {
-              finalTranscript += transcript + ' ';
-            } else {
-              interimTranscript += transcript;
-            }
-          }
-          
-          // Afficher le transcript en temps réel (pour le feedback visuel)
-          const currentTranscript = (finalTranscript || interimTranscript).trim();
-          if (currentTranscript && isPushingToTalkRef.current) {
-            setVoiceTranscript(currentTranscript);
-            console.log('🎤 Transcript capturé:', currentTranscript);
-          }
-        };
-        
-        recognitionInstance.onerror = (event: any) => {
-          console.error('Erreur de reconnaissance vocale:', event.error);
-          if (event.error === 'no-speech') {
-            // Pas de problème dans le mode Push-to-Talk
-          } else {
-            showToast('error', 'Erreur de reconnaissance vocale');
-          }
-        };
-        
-        recognitionInstance.onend = () => {
-          console.log('🔄 Recognition onend');
-          // Mode Push-to-Talk : Ne PAS redémarrer automatiquement
-          // Le recognition ne démarre QUE quand l'utilisateur maintient le bouton
-        };
-        
-        setRecognition(recognitionInstance);
-      }
-    }
-  }, []);
+  // Initialiser le système d'enregistrement audio (remplace reconnaissance vocale)
+  // Pas besoin de useEffect - on initialise le MediaRecorder à la demande
 
   // Gérer l'envoi du message vocal à l'IA
   const handleVoiceMessage = async (transcript: string) => {
@@ -645,18 +606,6 @@ export default function Home() {
     // Marquer qu'on commence le traitement
     isProcessingMessageRef.current = true;
     console.log('🔒 Flag de traitement activé');
-    
-    // IMPORTANT : Arrêter complètement le recognition pour éviter la boucle
-    if (recognition) {
-      try {
-        recognition.stop();
-        console.log('🛑 Recognition ARRÊTÉ complètement');
-      } catch (e) {
-        console.log('⚠️ Recognition déjà arrêté');
-      }
-    }
-    
-    console.log('🔇 Écoute arrêtée');
     
     // Ajouter le message de l'utilisateur
     const userMessage: Message = {
@@ -771,25 +720,30 @@ export default function Home() {
       // Utiliser window.speechSynthesis directement et les refs pour les états
       const hasSpeechSynthesis = typeof window !== 'undefined' && 'speechSynthesis' in window;
       const isCallActive = isVoiceCallActiveRef.current;
+      const isArabic = isArabicText(fullContent);
+      
+      // Vérifier si on a une voix locale arabe disponible
+      let hasLocalArabicVoice = false;
+      if (isArabic && hasSpeechSynthesis) {
+        const voices = window.speechSynthesis.getVoices();
+        hasLocalArabicVoice = voices.some(v => v.lang.startsWith('ar') && v.localService && !v.name.includes('Online'));
+        console.log('🔍 Voix arabe locale disponible:', hasLocalArabicVoice);
+      }
+      
+      // Si c'est de l'arabe SANS voix locale, ne pas essayer de lire
+      const shouldSkipSpeech = isArabic && !hasLocalArabicVoice;
       
       console.log('🔍 Vérification conditions speech:', {
         hasSpeechSynthesis,
         isCallActive,
         hasContent: !!fullContent,
-        contentLength: fullContent.length
+        contentLength: fullContent.length,
+        isArabic,
+        hasLocalArabicVoice,
+        shouldSkipSpeech
       });
       
-      if (hasSpeechSynthesis && isCallActive && fullContent) {
-        // IMPORTANT : Arrêter le recognition AVANT de parler pour éviter de capter sa propre voix
-        if (recognition) {
-          try {
-            recognition.stop();
-            console.log('🛑 Recognition arrêté AVANT speech synthesis');
-          } catch (e) {
-            console.log('⚠️ Recognition déjà arrêté');
-          }
-        }
-        
+      if (hasSpeechSynthesis && isCallActive && fullContent && !shouldSkipSpeech) {
         const cleanText = fullContent
           .replace(/[#*_`~\[\]()]/g, '')
           .replace(/\n\n+/g, '. ')
@@ -811,21 +765,26 @@ export default function Home() {
         
         if (voices.length > 0) {
           if (isArabic) {
-            // Chercher une voix arabe de qualité
-            selectedVoice = voices.find(v => v.lang.startsWith('ar') && v.localService) // Locale d'abord
-              || voices.find(v => v.lang.startsWith('ar')); // Sinon n'importe quelle voix arabe
+            // Chercher une voix arabe LOCALE (plus fiable que les voix Online)
+            // Éviter les voix "Online" qui échouent souvent
+            selectedVoice = voices.find(v => v.lang.startsWith('ar') && v.localService && !v.name.includes('Online'))
+              || voices.find(v => v.lang.startsWith('ar') && v.localService)
+              || voices.find(v => v.lang.startsWith('ar') && !v.name.includes('Online'));
             
-            if (!selectedVoice) {
-              console.log('⚠️ Aucune voix arabe trouvée');
-              showToast('info', '🔊 Voix arabe non disponible, utilisez les paramètres système pour en ajouter une');
+            if (selectedVoice) {
+              console.log('✅ Voix arabe sélectionnée:', selectedVoice.name, '|', selectedVoice.lang);
+            } else {
+              console.log('⚠️ Aucune voix arabe locale trouvée, pas de voix assignée (fallback automatique)');
+              // Ne pas assigner de voix - laisser le navigateur utiliser sa voix par défaut
             }
           } else {
-            // Chercher la MEILLEURE voix française
-            // Prioriser : Google > Microsoft > Voix locales > Autres
-            selectedVoice = voices.find(v => v.lang === 'fr-FR' && v.name.includes('Google'))
-              || voices.find(v => v.lang === 'fr-FR' && v.name.includes('Microsoft'))
+            // Chercher la MEILLEURE voix française LOCALE
+            // Prioriser : Locales > Google > Microsoft
+            selectedVoice = voices.find(v => v.lang === 'fr-FR' && v.localService && v.name.includes('Google'))
+              || voices.find(v => v.lang === 'fr-FR' && v.localService && v.name.includes('Microsoft'))
               || voices.find(v => v.lang === 'fr-FR' && v.localService)
-              || voices.find(v => v.lang.startsWith('fr-'))
+              || voices.find(v => v.lang === 'fr-FR' && v.name.includes('Google'))
+              || voices.find(v => v.lang.startsWith('fr-') && v.localService)
               || voices.find(v => v.lang.startsWith('fr'));
             
             if (selectedVoice) {
@@ -835,6 +794,7 @@ export default function Home() {
             }
           }
           
+          // N'assigner la voix QUE si on en a trouvé une fiable
           if (selectedVoice) {
             utterance.voice = selectedVoice;
           }
@@ -868,13 +828,50 @@ export default function Home() {
         
         utterance.onerror = (e) => {
           console.error('❌ Erreur speech synthesis:', e);
-          setIsAISpeaking(false);
           
-          // IMPORTANT : Libérer le flag de traitement même en cas d'erreur
+          // FALLBACK : Si la voix spécifique échoue, essayer sans voix (voix par défaut)
+          if (e.error === 'synthesis-failed') {
+            console.log('🔄 Tentative avec voix par défaut...');
+            
+            const fallbackUtterance = new SpeechSynthesisUtterance(cleanText);
+            fallbackUtterance.lang = isArabic ? 'ar-SA' : 'fr-FR';
+            fallbackUtterance.rate = speechRate;
+            fallbackUtterance.pitch = 1.0;
+            fallbackUtterance.volume = 1.0;
+            // Ne pas assigner de voix - laisser le navigateur choisir par défaut
+            
+            fallbackUtterance.onend = () => {
+              console.log('⏹️ Speech synthesis terminée (fallback)');
+              setIsAISpeaking(false);
+              isProcessingMessageRef.current = false;
+              console.log('🔓 Flag de traitement désactivé');
+            };
+            
+            fallbackUtterance.onerror = (e2) => {
+              console.error('❌ Erreur fallback:', e2);
+              showToast('info', '📝 La lecture vocale n\'est pas disponible, mais la réponse est affichée');
+              setIsAISpeaking(false);
+              isProcessingMessageRef.current = false;
+              console.log('🔓 Flag de traitement désactivé (fallback error)');
+            };
+            
+            // Essayer avec le fallback
+            try {
+              window.speechSynthesis.cancel(); // Annuler l'essai précédent
+              window.speechSynthesis.speak(fallbackUtterance);
+              console.log('✅ Fallback lancé avec voix par défaut');
+            } catch (error) {
+              console.error('❌ Impossible de lancer le fallback:', error);
+              setIsAISpeaking(false);
+              isProcessingMessageRef.current = false;
+            }
+            return; // Ne pas continuer avec le code ci-dessous
+          }
+          
+          // Pour les autres erreurs
+          setIsAISpeaking(false);
           isProcessingMessageRef.current = false;
           console.log('🔓 Flag de traitement désactivé (erreur)');
-          
-          // Mode Push-to-Talk : Ne PAS redémarrer automatiquement
         };
         
         console.log('🚀 Lancement de speechSynthesis.speak()...');
@@ -913,6 +910,10 @@ export default function Home() {
         if (!hasSpeechSynthesis) console.log('  - speechSynthesis non disponible dans le navigateur');
         if (!isCallActive) console.log('  - isCallActive = false (ref value)');
         if (!fullContent) console.log('  - fullContent vide');
+        if (shouldSkipSpeech) {
+          console.log('  - Lecture arabe ignorée (pas de voix locale disponible)');
+          showToast('info', '📝 Réponse en arabe affichée (voix arabe non disponible sur votre système)');
+        }
         
         setIsAISpeaking(false);
         
@@ -936,31 +937,35 @@ export default function Home() {
   };
 
   // Démarrer l'appel vocal
-  const startVoiceCall = () => {
+  const startVoiceCall = async () => {
     console.log('📞 startVoiceCall appelé');
-    
-    if (!recognition) {
-      showToast('error', 'La reconnaissance vocale n\'est pas supportée par ce navigateur');
-      return;
-    }
     
     if (!selectedProject) {
       showToast('warning', 'Veuillez sélectionner un projet d\'abord');
       return;
     }
     
-    // Afficher les voix disponibles pour debug
-    const voices = window.speechSynthesis.getVoices();
-    console.log('🗣️ Voix disponibles sur ce système:', voices.length);
-    voices.forEach((voice, i) => {
-      console.log(`  ${i + 1}. ${voice.name} (${voice.lang}) ${voice.localService ? '🏠 Local' : '☁️ Remote'} ${voice.default ? '⭐ Défaut' : ''}`);
-    });
-    
-    console.log('✅ Démarrage de l\'appel vocal...');
-    setIsVoiceCallActive(true);
-    
-    // Mode Push-to-Talk : pas de démarrage automatique du recognition
-    showToast('success', '🎙️ Appel vocal prêt - Maintenez le bouton pour parler !');
+    // Demander la permission du microphone
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      mediaStreamRef.current = stream;
+      console.log('✅ Permission microphone accordée');
+      
+      // Afficher les voix disponibles pour debug
+      const voices = window.speechSynthesis.getVoices();
+      console.log('🗣️ Voix disponibles sur ce système:', voices.length);
+      voices.forEach((voice, i) => {
+        console.log(`  ${i + 1}. ${voice.name} (${voice.lang}) ${voice.localService ? '🏠 Local' : '☁️ Remote'} ${voice.default ? '⭐ Défaut' : ''}`);
+      });
+      
+      console.log('✅ Démarrage de l\'appel vocal...');
+      setIsVoiceCallActive(true);
+      
+      showToast('success', '🎙️ Appel vocal prêt - Maintenez le bouton pour enregistrer !');
+    } catch (error) {
+      console.error('❌ Permission microphone refusée:', error);
+      showToast('error', '🎤 Veuillez autoriser l\'accès au microphone');
+    }
   };
 
   // Arrêter l'appel vocal
@@ -971,9 +976,17 @@ export default function Home() {
     setIsPushingToTalk(false);
     setIsAISpeaking(false);
     setVoiceTranscript('');
+    setIsTranscribing(false);
     
-    if (recognition) {
-      recognition.stop();
+    // Arrêter l'enregistrement si en cours
+    if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
+      mediaRecorderRef.current.stop();
+    }
+    
+    // Libérer le stream du microphone
+    if (mediaStreamRef.current) {
+      mediaStreamRef.current.getTracks().forEach(track => track.stop());
+      mediaStreamRef.current = null;
     }
     
     if (typeof window !== 'undefined' && window.speechSynthesis) {
@@ -983,9 +996,9 @@ export default function Home() {
     showToast('info', '📞 Appel vocal terminé');
   };
 
-  // Push-to-Talk : Démarrer l'écoute quand on appuie
+  // Push-to-Talk : Démarrer l'enregistrement audio quand on appuie
   const startPushToTalk = () => {
-    console.log('🎙️ Push-to-Talk : START');
+    console.log('🎙️ Push-to-Talk : START - Début enregistrement');
     
     // IMPORTANT : Si l'IA parle, l'interrompre immédiatement !
     if (isAISpeaking) {
@@ -1005,34 +1018,188 @@ export default function Home() {
     
     setIsPushingToTalk(true);
     setVoiceTranscript('');
+    audioChunksRef.current = [];
     
-    if (recognition) {
+    // Créer un nouveau MediaRecorder
+    if (mediaStreamRef.current) {
       try {
-        recognition.start();
-        console.log('✅ Recognition démarré');
-      } catch (e) {
-        console.log('⚠️ Recognition déjà actif');
+        const mediaRecorder = new MediaRecorder(mediaStreamRef.current, {
+          mimeType: 'audio/webm;codecs=opus'
+        });
+        
+        mediaRecorder.ondataavailable = (event) => {
+          if (event.data.size > 0) {
+            audioChunksRef.current.push(event.data);
+            console.log('🎤 Chunk audio capturé:', event.data.size, 'bytes');
+          }
+        };
+        
+        mediaRecorder.start(100); // Enregistrer des chunks toutes les 100ms
+        mediaRecorderRef.current = mediaRecorder;
+        console.log('✅ Enregistrement audio démarré');
+      } catch (error) {
+        console.error('❌ Erreur démarrage MediaRecorder:', error);
+        showToast('error', 'Erreur d\'enregistrement audio');
       }
     }
   };
 
-  // Push-to-Talk : Arrêter l'écoute et envoyer quand on relâche
-  const stopPushToTalk = () => {
-    console.log('🎙️ Push-to-Talk : STOP');
+  // Push-to-Talk : Arrêter l'enregistrement et transcrire quand on relâche
+  const stopPushToTalk = async () => {
+    console.log('🎙️ Push-to-Talk : STOP - Fin enregistrement');
     setIsPushingToTalk(false);
     
-    if (recognition) {
-      recognition.stop();
-      console.log('🛑 Recognition arrêté');
+    if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
+      mediaRecorderRef.current.stop();
+      
+      // Attendre que tous les chunks soient collectés
+      await new Promise(resolve => setTimeout(resolve, 200));
+      
+      if (audioChunksRef.current.length === 0) {
+        console.log('❌ Aucun audio enregistré');
+        showToast('warning', 'Aucun audio détecté');
+        return;
+      }
+      
+      console.log('� Total chunks collectés:', audioChunksRef.current.length);
+      
+      // Créer un blob audio
+      const audioBlob = new Blob(audioChunksRef.current, { type: 'audio/webm' });
+      console.log('🎵 Blob audio créé:', audioBlob.size, 'bytes');
+      
+      // Afficher "Transcription en cours..."
+      setIsTranscribing(true);
+      setVoiceTranscript('Transcription en cours...');
+      
+      // Envoyer à l'API de transcription
+      try {
+        const formData = new FormData();
+        formData.append('audio', audioBlob, 'recording.webm');
+        
+        console.log('📤 Envoi audio pour transcription...');
+        const response = await fetch('/api/transcribe', {
+          method: 'POST',
+          body: formData
+        });
+        
+        const result = await response.json();
+        
+        if (result.success && result.transcription) {
+          console.log('✅ Transcription reçue:', result.transcription);
+          setVoiceTranscript(result.transcription);
+          setIsTranscribing(false);
+          
+          // Envoyer à l'IA
+          handleVoiceMessage(result.transcription);
+        } else {
+          console.error('❌ Erreur transcription:', result.error);
+          setIsTranscribing(false);
+          setVoiceTranscript('');
+          showToast('error', 'Erreur de transcription');
+        }
+      } catch (error) {
+        console.error('❌ Erreur envoi audio:', error);
+        setIsTranscribing(false);
+        setVoiceTranscript('');
+        showToast('error', 'Erreur d\'envoi audio');
+      }
     }
+  };
+
+  // Enregistrement vocal rapide (sans mode appel)
+  const startQuickRecording = async () => {
+    console.log('🎙️ Enregistrement vocal rapide démarré');
     
-    // Envoyer le transcript capturé si valide
-    if (voiceTranscript.trim()) {
-      console.log('📤 Envoi du transcript:', voiceTranscript);
-      handleVoiceMessage(voiceTranscript);
-      setVoiceTranscript('');
-    } else {
-      console.log('❌ Pas de transcript à envoyer');
+    try {
+      // Demander l'accès au microphone
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      quickStreamRef.current = stream;
+      
+      setIsQuickRecording(true);
+      quickAudioChunksRef.current = [];
+      
+      // Créer un nouveau MediaRecorder
+      const mediaRecorder = new MediaRecorder(stream, {
+        mimeType: 'audio/webm;codecs=opus'
+      });
+      
+      mediaRecorder.ondataavailable = (event) => {
+        if (event.data.size > 0) {
+          quickAudioChunksRef.current.push(event.data);
+          console.log('🎤 Chunk audio rapide capturé:', event.data.size, 'bytes');
+        }
+      };
+      
+      mediaRecorder.start(100);
+      quickRecorderRef.current = mediaRecorder;
+      console.log('✅ Enregistrement vocal rapide actif');
+      showToast('info', '🎤 Enregistrement en cours...');
+    } catch (error) {
+      console.error('❌ Erreur accès microphone:', error);
+      showToast('error', 'Impossible d\'accéder au microphone');
+    }
+  };
+
+  const stopQuickRecording = async () => {
+    console.log('🎙️ Arrêt enregistrement vocal rapide');
+    setIsQuickRecording(false);
+    
+    if (quickRecorderRef.current && quickRecorderRef.current.state !== 'inactive') {
+      quickRecorderRef.current.stop();
+      
+      // Libérer le stream
+      if (quickStreamRef.current) {
+        quickStreamRef.current.getTracks().forEach(track => track.stop());
+        quickStreamRef.current = null;
+      }
+      
+      // Attendre que tous les chunks soient collectés
+      await new Promise(resolve => setTimeout(resolve, 200));
+      
+      if (quickAudioChunksRef.current.length === 0) {
+        console.log('❌ Aucun audio enregistré');
+        showToast('warning', 'Aucun audio détecté');
+        return;
+      }
+      
+      console.log('📦 Total chunks collectés:', quickAudioChunksRef.current.length);
+      
+      // Créer un blob audio
+      const audioBlob = new Blob(quickAudioChunksRef.current, { type: 'audio/webm' });
+      console.log('🎵 Blob audio créé:', audioBlob.size, 'bytes');
+      
+      // Afficher "Transcription en cours..."
+      setIsTranscribing(true);
+      
+      try {
+        const formData = new FormData();
+        formData.append('audio', audioBlob, 'quick-recording.webm');
+        
+        console.log('📤 Envoi audio pour transcription...');
+        const response = await fetch('/api/transcribe', {
+          method: 'POST',
+          body: formData
+        });
+        
+        const result = await response.json();
+        
+        if (result.success && result.transcription) {
+          console.log('✅ Transcription reçue:', result.transcription);
+          setIsTranscribing(false);
+          
+          // Mettre le texte transcrit dans l'input
+          setInputMessage(result.transcription);
+          showToast('success', '✅ Transcription ajoutée');
+        } else {
+          console.error('❌ Erreur transcription:', result.error);
+          setIsTranscribing(false);
+          showToast('error', 'Erreur de transcription');
+        }
+      } catch (error) {
+        console.error('❌ Erreur envoi audio:', error);
+        setIsTranscribing(false);
+        showToast('error', 'Erreur d\'envoi audio');
+      }
     }
   };
 
@@ -2892,7 +3059,7 @@ Ce document PDF a été analysé et son contenu textuel complet est ci-dessus. L
   };
 
   return (
-    <div className="flex h-screen overflow-hidden bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900 pb-12">
+    <div className="flex h-screen overflow-hidden bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900" style={{ paddingBottom: '40px' }}>
       {/* Sidebar - Projets et Chapitres */}
       <motion.div 
         initial={false}
@@ -3112,20 +3279,19 @@ Ce document PDF a été analysé et son contenu textuel complet est ci-dessus. L
             )}
             
             {/* Bouton Appel Vocal */}
-            {recognition && (
-              <button
-                onClick={() => {
-                  if (!selectedProject) {
-                    showToast('warning', '⚠️ Veuillez d\'abord créer ou sélectionner un projet !');
-                    return;
-                  }
-                  if (isVoiceCallActive) {
-                    endVoiceCall();
-                  } else {
-                    startVoiceCall();
-                  }
-                }}
-                disabled={!selectedProject && !isVoiceCallActive}
+            <button
+              onClick={() => {
+                if (!selectedProject) {
+                  showToast('warning', '⚠️ Veuillez d\'abord créer ou sélectionner un projet !');
+                  return;
+                }
+                if (isVoiceCallActive) {
+                  endVoiceCall();
+                } else {
+                  startVoiceCall();
+                }
+              }}
+              disabled={!selectedProject && !isVoiceCallActive}
                 className={`p-2 rounded-lg transition-all ${
                   !selectedProject && !isVoiceCallActive
                     ? 'bg-gray-600 text-gray-400 cursor-not-allowed opacity-50'
@@ -3147,7 +3313,6 @@ Ce document PDF a été analysé et son contenu textuel complet est ci-dessus. L
                   <Phone className="w-5 h-5" />
                 )}
               </button>
-            )}
             
             {messages.length > 0 && speechSynthesis && (
               <button
@@ -3657,31 +3822,33 @@ Ce document PDF a été analysé et son contenu textuel complet est ci-dessus. L
               </div>
             )}
             
-            {/* Générateur d'images IA */}
-            <div className="mb-3 flex gap-2">
-              <input
-                type="text"
-                value={imagePrompt}
-                onChange={(e) => setImagePrompt(e.target.value)}
-                onKeyPress={(e) => e.key === 'Enter' && !isGeneratingImage && generateImage()}
-                placeholder="🎨 Image IA..."
-                className="flex-1 px-3 py-2 bg-purple-500/10 border border-purple-500/30 rounded-lg text-white placeholder-gray-400 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500 min-w-0"
-                disabled={isGeneratingImage}
-              />
-              <button
-                onClick={() => generateImage()}
-                disabled={isGeneratingImage || !imagePrompt.trim()}
-                className="px-3 py-2 bg-gradient-to-r from-purple-600 to-pink-600 text-white rounded-lg hover:opacity-90 disabled:opacity-50 transition-opacity flex items-center justify-center gap-1 flex-shrink-0 min-w-[80px]"
-                title="Générer une image IA"
-              >
-                {isGeneratingImage ? (
-                  <Loader2 className="w-4 h-4 animate-spin" />
-                ) : (
-                  <Wand2 className="w-4 h-4" />
-                )}
-                <span className="text-xs md:text-sm font-medium">Générer</span>
-              </button>
-            </div>
+            {/* Générateur d'images IA - Visible uniquement pour le Studio d'Images IA */}
+            {selectedProject?.project_type === 'image-studio' && (
+              <div className="mb-3 flex gap-2">
+                <input
+                  type="text"
+                  value={imagePrompt}
+                  onChange={(e) => setImagePrompt(e.target.value)}
+                  onKeyPress={(e) => e.key === 'Enter' && !isGeneratingImage && generateImage()}
+                  placeholder="🎨 Décrivez l'image à générer..."
+                  className="flex-1 px-3 py-2 bg-purple-500/10 border border-purple-500/30 rounded-lg text-white placeholder-gray-400 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500 min-w-0"
+                  disabled={isGeneratingImage}
+                />
+                <button
+                  onClick={() => generateImage()}
+                  disabled={isGeneratingImage || !imagePrompt.trim()}
+                  className="px-3 py-2 bg-gradient-to-r from-purple-600 to-pink-600 text-white rounded-lg hover:opacity-90 disabled:opacity-50 transition-opacity flex items-center justify-center gap-1 flex-shrink-0 min-w-[80px]"
+                  title="Générer une image IA"
+                >
+                  {isGeneratingImage ? (
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                  ) : (
+                    <Wand2 className="w-4 h-4" />
+                  )}
+                  <span className="text-xs md:text-sm font-medium">Générer</span>
+                </button>
+              </div>
+            )}
 
             <div className="space-y-2">
               {/* Indicateurs contextuels selon le type de projet */}
@@ -3731,23 +3898,59 @@ Ce document PDF a été analysé et son contenu textuel complet est ci-dessus. L
                   multiple
                   className="hidden"
                 />
-                {/* Bouton pour images */}
+                {/* Bouton Clips (remplace images + fichiers) */}
+                <div className="relative group">
+                  <button
+                    disabled={isGenerating}
+                    className="px-3 py-3 bg-white/10 border border-white/20 rounded-xl text-white hover:bg-white/20 disabled:opacity-50 transition-colors flex-shrink-0"
+                    title="Ajouter des fichiers"
+                  >
+                    <Paperclip className="w-5 h-5" />
+                  </button>
+                  {/* Menu déroulant au survol */}
+                  <div className="absolute bottom-full left-0 mb-2 opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-200 z-10">
+                    <div className="bg-slate-800 border border-white/20 rounded-lg shadow-xl overflow-hidden min-w-[180px]">
+                      <button
+                        onClick={() => fileInputRef.current?.click()}
+                        disabled={isGenerating}
+                        className="w-full px-4 py-2.5 flex items-center gap-3 text-white hover:bg-white/10 disabled:opacity-50 transition-colors text-left"
+                      >
+                        <ImageIcon className="w-4 h-4 text-purple-400" />
+                        <span className="text-sm font-medium">Images</span>
+                      </button>
+                      <button
+                        onClick={() => pdfInputRef.current?.click()}
+                        disabled={isGenerating}
+                        className="w-full px-4 py-2.5 flex items-center gap-3 text-white hover:bg-white/10 disabled:opacity-50 transition-colors text-left border-t border-white/10"
+                      >
+                        <File className="w-4 h-4 text-blue-400" />
+                        <span className="text-sm font-medium">PDF / Texte</span>
+                      </button>
+                    </div>
+                  </div>
+                </div>
+                {/* Bouton d'enregistrement vocal rapide */}
                 <button
-                  onClick={() => fileInputRef.current?.click()}
-                  disabled={isGenerating}
-                  className="px-3 py-3 bg-white/10 border border-white/20 rounded-xl text-white hover:bg-white/20 disabled:opacity-50 transition-colors flex-shrink-0"
-                  title="Ajouter des images"
+                  onMouseDown={startQuickRecording}
+                  onMouseUp={stopQuickRecording}
+                  onMouseLeave={() => isQuickRecording && stopQuickRecording()}
+                  onTouchStart={startQuickRecording}
+                  onTouchEnd={stopQuickRecording}
+                  disabled={isGenerating || isTranscribing}
+                  className={`px-3 py-3 border rounded-xl text-white transition-all flex-shrink-0 ${
+                    isQuickRecording 
+                      ? 'bg-red-500 border-red-400 animate-pulse shadow-lg shadow-red-500/50' 
+                      : isTranscribing
+                      ? 'bg-yellow-500 border-yellow-400 animate-pulse'
+                      : 'bg-white/10 border-white/20 hover:bg-purple-500/20 hover:border-purple-400'
+                  } disabled:opacity-50`}
+                  title={isQuickRecording ? "Relâchez pour transcrire" : isTranscribing ? "Transcription en cours..." : "Maintenir pour enregistrer un message vocal"}
                 >
-                  <ImageIcon className="w-5 h-5" />
-                </button>
-                {/* Bouton pour fichiers PDF/texte */}
-                <button
-                  onClick={() => pdfInputRef.current?.click()}
-                  disabled={isGenerating}
-                  className="px-3 py-3 bg-white/10 border border-white/20 rounded-xl text-white hover:bg-white/20 disabled:opacity-50 transition-colors flex-shrink-0"
-                  title="Ajouter des fichiers (PDF, TXT)"
-                >
-                  <Paperclip className="w-5 h-5" />
+                  {isTranscribing ? (
+                    <Loader2 className="w-5 h-5 animate-spin" />
+                  ) : (
+                    <Mic className={`w-5 h-5 ${isQuickRecording ? 'animate-pulse' : ''}`} />
+                  )}
                 </button>
                 <input
                   type="text"
@@ -3842,9 +4045,9 @@ Ce document PDF a été analysé et son contenu textuel complet est ci-dessus. L
               animate={{ scale: 1, opacity: 1 }}
               exit={{ scale: 0.9, opacity: 0 }}
               onClick={(e) => e.stopPropagation()}
-              className="bg-slate-800 p-6 md:p-8 rounded-2xl w-full max-w-5xl mx-auto max-h-[90vh] overflow-y-auto"
+              className="bg-slate-800 p-4 md:p-6 rounded-2xl w-full max-w-4xl mx-auto max-h-[85vh] overflow-y-auto"
             >
-              <h2 className="text-2xl md:text-3xl font-bold text-white mb-6">✨ Nouveau Projet</h2>
+              <h2 className="text-xl md:text-2xl font-bold text-white mb-4">✨ Nouveau Projet</h2>
               <form
                 onSubmit={(e) => {
                   e.preventDefault();
@@ -3857,11 +4060,11 @@ Ce document PDF a été analysé et son contenu textuel complet est ci-dessus. L
                 }}
               >
                 {/* Sélecteur de type de projet */}
-                <div className="mb-6">
-                  <label className="block text-sm md:text-base font-medium text-gray-300 mb-4">
+                <div className="mb-4">
+                  <label className="block text-sm font-medium text-gray-300 mb-3">
                     Choisissez le type de projet
                   </label>
-                  <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3 md:gap-4 max-h-[50vh] overflow-y-auto pr-2 scrollbar-thin scrollbar-thumb-purple-500 scrollbar-track-slate-700">
+                  <div className="grid grid-cols-2 md:grid-cols-3 gap-2 md:gap-3 max-h-[40vh] overflow-y-auto pr-2 scrollbar-thin scrollbar-thumb-purple-500 scrollbar-track-slate-700">
                     {PROJECT_TYPES.map((type) => {
                       const Icon = type.icon;
                       const colorClasses = {
@@ -3887,12 +4090,12 @@ Ce document PDF a été analysé et son contenu textuel complet est ci-dessus. L
                             defaultChecked={type.id === 'chatbot'}
                             className="peer sr-only"
                           />
-                          <div className={`p-4 md:p-5 bg-white/5 border-2 border-white/20 rounded-xl transition-all hover:scale-105 ${colorClasses[type.color as keyof typeof colorClasses]}`}>
-                            <div className="flex flex-col gap-2 mb-2">
-                              <span className="text-2xl md:text-3xl">{type.emoji}</span>
-                              <span className="font-semibold text-white text-sm md:text-base leading-tight">{type.name}</span>
+                          <div className={`p-3 md:p-4 bg-white/5 border-2 border-white/20 rounded-xl transition-all hover:scale-105 ${colorClasses[type.color as keyof typeof colorClasses]}`}>
+                            <div className="flex flex-col gap-1 mb-1.5">
+                              <span className="text-xl md:text-2xl">{type.emoji}</span>
+                              <span className="font-semibold text-white text-xs md:text-sm leading-tight">{type.name}</span>
                             </div>
-                            <p className="text-xs md:text-sm text-gray-400 leading-snug">
+                            <p className="text-xs text-gray-400 leading-snug line-clamp-2">
                               {type.description}
                             </p>
                           </div>
@@ -3902,32 +4105,32 @@ Ce document PDF a été analysé et son contenu textuel complet est ci-dessus. L
                   </div>
                 </div>
 
-                <div className="space-y-4 mb-6">
+                <div className="space-y-3 mb-4">
                   <input
                     name="title"
                     type="text"
                     placeholder="Titre du projet"
                     required
-                    className="w-full px-4 py-3 bg-white/10 border border-white/20 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-purple-500"
+                    className="w-full px-3 py-2.5 bg-white/10 border border-white/20 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-purple-500 text-sm"
                   />
                   <textarea
                     name="description"
                     placeholder="Description (optionnel)"
-                    rows={3}
-                    className="w-full px-4 py-3 bg-white/10 border border-white/20 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-purple-500 resize-none"
+                    rows={2}
+                    className="w-full px-3 py-2.5 bg-white/10 border border-white/20 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-purple-500 resize-none text-sm"
                   />
                 </div>
-                <div className="flex gap-3">
+                <div className="flex gap-2">
                   <button
                     type="button"
                     onClick={() => setShowNewProjectModal(false)}
-                    className="flex-1 px-4 py-3 bg-white/10 text-white rounded-lg hover:bg-white/20 transition-colors"
+                    className="flex-1 px-4 py-2.5 bg-white/10 text-white rounded-lg hover:bg-white/20 transition-colors text-sm font-medium"
                   >
                     Annuler
                   </button>
                   <button
                     type="submit"
-                    className="flex-1 px-4 py-3 bg-gradient-to-r from-purple-500 to-pink-500 text-white rounded-lg hover:opacity-90 transition-opacity"
+                    className="flex-1 px-4 py-2.5 bg-gradient-to-r from-purple-500 to-pink-500 text-white rounded-lg hover:opacity-90 transition-opacity text-sm font-medium"
                   >
                     Créer
                   </button>
@@ -4209,9 +4412,15 @@ Ce document PDF a été analysé et son contenu textuel complet est ci-dessus. L
               {/* Statut */}
               <div className="text-center mb-8">
                 <p className="text-white text-xl font-bold mb-2">
-                  {isAISpeaking ? '🤖 L\'IA parle... (Appuyez pour interrompre)' : isPushingToTalk ? '🎤 En écoute...' : '✋ Prêt à parler'}
+                  {isAISpeaking 
+                    ? '🤖 L\'IA parle... (Appuyez pour interrompre)' 
+                    : isTranscribing 
+                    ? '🔄 Transcription en cours...'
+                    : isPushingToTalk 
+                    ? '🎤 Enregistrement...' 
+                    : '✋ Prêt à parler'}
                 </p>
-                {voiceTranscript && isPushingToTalk && (
+                {voiceTranscript && !isTranscribing && (
                   <p className="text-purple-300 text-sm mt-2 italic">"{voiceTranscript}"</p>
                 )}
               </div>
@@ -4223,16 +4432,30 @@ Ce document PDF a été analysé et son contenu textuel complet est ci-dessus. L
                   onMouseUp={stopPushToTalk}
                   onTouchStart={startPushToTalk}
                   onTouchEnd={stopPushToTalk}
+                  disabled={isTranscribing}
                   className={`relative w-40 h-40 rounded-full transition-all duration-200 shadow-2xl cursor-pointer active:scale-90 ${
-                    isPushingToTalk
+                    isTranscribing
+                      ? 'bg-gradient-to-br from-yellow-500 to-orange-500 animate-pulse cursor-wait'
+                      : isPushingToTalk
                       ? 'bg-gradient-to-br from-red-500 to-pink-600 scale-95'
                       : isAISpeaking
                       ? 'bg-gradient-to-br from-orange-500 to-red-600 hover:scale-105 animate-pulse'
                       : 'bg-gradient-to-br from-purple-500 to-blue-600 hover:scale-105'
                   }`}
-                  title={isAISpeaking ? "Appuyez pour interrompre l'IA" : "Maintenez pour parler"}
+                  title={
+                    isTranscribing 
+                      ? "Transcription en cours..." 
+                      : isAISpeaking 
+                      ? "Appuyez pour interrompre l'IA" 
+                      : "Maintenez pour enregistrer"
+                  }
                 >
-                  {isPushingToTalk ? (
+                  {isTranscribing ? (
+                    <div className="absolute inset-0 flex flex-col items-center justify-center">
+                      <div className="w-16 h-16 border-4 border-white border-t-transparent rounded-full animate-spin"></div>
+                      <p className="text-white font-bold text-sm mt-2">Analyse...</p>
+                    </div>
+                  ) : isPushingToTalk ? (
                     <div className="absolute inset-0 flex flex-col items-center justify-center">
                       <Mic className="w-16 h-16 text-white animate-pulse" />
                       <p className="text-white font-bold text-sm mt-2">Relâchez</p>
