@@ -175,6 +175,7 @@ interface Message {
   role: 'user' | 'assistant';
   content: string;
   images?: string[]; // Base64 des images
+  files?: {name: string, type: string, size?: number}[]; // Fichiers uploadés (pour affichage)
 }
 
 interface Toast {
@@ -273,7 +274,8 @@ export default function Home() {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const [showNewProjectModal, setShowNewProjectModal] = useState(false);
   const [uploadedImages, setUploadedImages] = useState<string[]>([]);
-  const [uploadedFiles, setUploadedFiles] = useState<{name: string, type: string, content: string}[]>([]);
+  const [uploadedFiles, setUploadedFiles] = useState<{name: string, type: string, content: string, size?: number, isLoading?: boolean}[]>([]);
+  const [isUploadingFile, setIsUploadingFile] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const pdfInputRef = useRef<HTMLInputElement>(null);
   const [editingMessageIndex, setEditingMessageIndex] = useState<number | null>(null);
@@ -2601,7 +2603,8 @@ export default function Home() {
     const files = e.target.files;
     if (!files) return;
 
-    const newFiles: {name: string, type: string, content: string}[] = [];
+    setIsUploadingFile(true);
+    const newFiles: {name: string, type: string, content: string, size?: number, isLoading?: boolean}[] = [];
     
     for (let i = 0; i < files.length; i++) {
       const file = files[i];
@@ -2609,7 +2612,17 @@ export default function Home() {
       
       // Gérer les PDFs
       if (fileType === 'application/pdf') {
-        showToast('info', `📄 Extraction du texte du PDF "${file.name}" en cours...`);
+        // Ajouter immédiatement le fichier en mode loading
+        const loadingFile = {
+          name: file.name,
+          type: 'pdf',
+          content: '',
+          size: file.size,
+          isLoading: true
+        };
+        setUploadedFiles(prev => [...prev, loadingFile]);
+        
+        showToast('info', `📄 Lecture du PDF "${file.name}" avec Gemini... (10-30 sec ⏳)`);
         
         try {
           // Créer un FormData pour envoyer le PDF à l'API
@@ -2624,72 +2637,70 @@ export default function Home() {
           
           const result = await response.json();
           
-          if (result.success && result.text) {
-            // Vérifier si le texte extrait est de mauvaise qualité (trop de caractères bizarres)
-            const strangeCharsRatio = (result.text.match(/[^\w\sàâäéèêëïîôùûçÀÂÄÉÈÊËÏÎÔÙÛÇ€%.,;:!?()\-'"]/g) || []).length / result.text.length;
+          // Vérifier si l'extraction a réussi et qu'il y a du texte
+          if (result.success && result.text && result.text.trim().length > 0) {
+            // L'OCR a déjà été fait côté serveur si nécessaire!
+            // On peut utiliser le texte directement
+            const textLength = result.text.trim().length;
             
-            if (strangeCharsRatio > 0.3 || result.text.trim().length < 100) {
-              // Extraction de mauvaise qualité
-              const pdfInfo = `📄 DOCUMENT PDF: ${file.name}
-Taille: ${Math.round(file.size / 1024)} KB
-Nombre de pages: ${result.numPages}
+            // Vérifier si le texte extrait est de mauvaise qualité (trop de caractères bizarres)
+            const strangeCharsRatio = textLength > 0 ? (result.text.match(/[^\p{L}\p{N}\p{P}\p{S}\p{Z}\n\r\t]/gu) || []).length / textLength : 1;
+            
+            // Considérer comme mauvaise qualité uniquement si VRAIMENT illisible (90% de caractères bizarres)
+            if (strangeCharsRatio > 0.9) {
+              // Texte trop bizarre - probablement une erreur
+              const pdfInfo = `📄 PDF: ${file.name} (${Math.round(file.size / 1024)} KB, ${result.numPages} pages)
 
-⚠️ **ATTENTION**: Ce PDF utilise des polices personnalisées qui rendent l'extraction de texte impossible.
+⚠️ Le texte extrait semble corrompu ou illisible.
 
-**Solutions possibles:**
-1. Convertir le PDF en format texte standard (File > Export as Text depuis un lecteur PDF)
-2. Utiliser un service OCR en ligne (si c'est un PDF scanné)
-3. Copier-coller manuellement le texte depuis le PDF
-
-**Ce que je peux faire:**
-- Répondre à des questions générales sur le marketing digital
-- T'aider à reformuler du contenu que tu me fournis
-- Créer du contenu similaire si tu me décris le sujet
-
-Désolé pour ce désagrément ! Les PDFs avec polices personnalisées sont très difficiles à lire automatiquement. 😔`;
+Solution: Prends des captures d'écran et envoie-les moi.`;
               
               newFiles.push({
                 name: file.name,
                 type: 'pdf',
                 content: pdfInfo
               });
-              setUploadedFiles(prev => [...prev, ...newFiles]);
-              showToast('warning', `⚠️ PDF "${file.name}": Extraction impossible (polices personnalisées)`);
+              showToast('warning', `⚠️ PDF "${file.name}": Texte corrompu`);
             } else {
-              // Texte extrait avec succès
-              const pdfContent = `📄 DOCUMENT PDF: ${file.name}
+              // Texte extrait avec succès par Gemini!
+              // Pour l'IA: Contenu complet pour l'analyse
+              const pdfContentForAI = `[DOCUMENT PDF ANALYSÉ]
+Fichier: ${file.name}
 Taille: ${Math.round(file.size / 1024)} KB
-Nombre de pages: ${result.numPages}
 
-══════════════════════════════════════════════════════════════
-CONTENU COMPLET DU PDF:
-══════════════════════════════════════════════════════════════
-
+CONTENU COMPLET:
 ${result.text}
 
-══════════════════════════════════════════════════════════════
-
-Ce document PDF a été analysé et son contenu textuel complet est ci-dessus. L'utilisateur veut que tu l'analyses. Réponds directement à sa question concernant ce document.`;
+L'utilisateur veut que tu analyses ce document. Réponds directement à sa question.`;
+              
+              // Retirer le fichier en loading et ajouter le vrai
+              setUploadedFiles(prev => prev.filter(f => !(f.name === file.name && f.isLoading)));
               
               newFiles.push({
                 name: file.name,
                 type: 'pdf',
-                content: pdfContent
+                content: pdfContentForAI,
+                size: file.size,
+                isLoading: false
               });
-              setUploadedFiles(prev => [...prev, ...newFiles]);
-              showToast('success', `✅ PDF "${file.name}" lu avec succès ! ${result.numPages} page(s) extraite(s).`);
+              const wordCount = result.text.split(/\s+/).length;
+              showToast('success', `✅ 📄 PDF "${file.name}" lu ! ${wordCount.toLocaleString()} mots extraits par Gemini.`);
             }
           } else {
-            // Échec de l'extraction, fallback sur les métadonnées
-            const pdfInfo = `📄 DOCUMENT PDF: ${file.name}\nTaille: ${Math.round(file.size / 1024)} KB\n\n⚠️ Le texte n'a pas pu être extrait de ce PDF. Il pourrait s'agir d'un PDF image, protégé, ou avec des polices personnalisées.`;
+            // Échec TOTAL de l'extraction (ni pdf-parse ni OCR n'ont fonctionné)
+            const errorMsg = result.text || "Impossible d'extraire le texte";
+            const pdfInfo = `📄 PDF: ${file.name} (${Math.round(file.size / 1024)} KB)
+
+⚠️ ${errorMsg}
+
+� Solution: Prends des captures d'écran et envoie-les moi, je les analyserai avec ma vision!`;
             
             newFiles.push({
               name: file.name,
               type: 'pdf',
               content: pdfInfo
             });
-            setUploadedFiles(prev => [...prev, ...newFiles]);
-            showToast('warning', `⚠️ PDF "${file.name}" ajouté mais le texte n'a pas pu être extrait.`);
+            showToast('error', `❌ PDF "${file.name}": Extraction impossible`);
           }
         } catch (error) {
           console.error('Erreur extraction PDF:', error);
@@ -2701,12 +2712,12 @@ Ce document PDF a été analysé et son contenu textuel complet est ci-dessus. L
         const reader = new FileReader();
         reader.onload = (event) => {
           if (event.target?.result) {
-            newFiles.push({
+            const textFile = {
               name: file.name,
               type: 'text',
               content: event.target.result as string
-            });
-            setUploadedFiles(prev => [...prev, ...newFiles]);
+            };
+            setUploadedFiles(prev => [...prev, textFile]);
             showToast('success', `📝 Fichier "${file.name}" lu avec succès !`);
           }
         };
@@ -2731,6 +2742,8 @@ Ce document PDF a été analysé et son contenu textuel complet est ci-dessus. L
     if (newFiles.length > 0) {
       setUploadedFiles(prev => [...prev, ...newFiles]);
     }
+    
+    setIsUploadingFile(false);
   };
 
   const deleteMessage = async (index: number) => {
@@ -3767,6 +3780,7 @@ Ce document PDF a été analysé et son contenu textuel complet est ci-dessus. L
 
     // Préparer le message avec le contenu des fichiers
     let finalMessage = inputMessage;
+    
     if (uploadedFiles.length > 0) {
       const filesContent = uploadedFiles.map(file => {
         if (file.type === 'pdf') {
@@ -4118,10 +4132,21 @@ Ce document PDF a été analysé et son contenu textuel complet est ci-dessus. L
       return;
     }
 
+    // Message utilisateur propre - SANS ajouter le texte du PDF (la carte suffit!)
+    let userDisplayMessage = inputMessage;
+    
+    // Préparer les infos des fichiers pour l'affichage (sans le contenu)
+    const filesForDisplay = uploadedFiles.map(f => ({
+      name: f.name,
+      type: f.type,
+      size: f.size
+    }));
+    
     const userMessage: Message = { 
       role: 'user', 
-      content: finalMessage || inputMessage || "Analyse cette image",
-      images: uploadedImages.length > 0 ? [...uploadedImages] : undefined
+      content: userDisplayMessage || inputMessage || "Analyse cette image",
+      images: uploadedImages.length > 0 ? [...uploadedImages] : undefined,
+      files: filesForDisplay.length > 0 ? filesForDisplay : undefined
     };
     setMessages([...messages, userMessage]);
     setInputMessage('');
@@ -5561,15 +5586,48 @@ Ce document PDF a été analysé et son contenu textuel complet est ci-dessus. L
                           </div>
                         </div>
                       ) : (
-                        <div 
-                          className="prose prose-invert max-w-none"
-                          style={{ 
-                            direction: isArabicText(msg.content) ? 'rtl' : 'ltr',
-                            textAlign: isArabicText(msg.content) ? 'right' : 'left',
-                            unicodeBidi: 'embed'
-                          }}
-                        >
-                          <ReactMarkdown
+                        <>
+                          {/* Afficher les pièces jointes (PDF, fichiers) si présentes */}
+                          {msg.files && msg.files.length > 0 && (
+                            <div className="mb-4 space-y-2">
+                              {msg.files.map((file, idx) => (
+                                <div key={idx} className={`flex items-center gap-3 p-3 rounded-xl border transition-colors ${
+                                  file.type === 'pdf'
+                                    ? 'bg-gradient-to-r from-red-500/10 to-pink-500/10 border-red-500/30 hover:border-red-500/50'
+                                    : 'bg-gradient-to-r from-blue-500/10 to-cyan-500/10 border-blue-500/30 hover:border-blue-500/50'
+                                }`}>
+                                  <div className={`flex items-center justify-center w-10 h-10 rounded-lg ${
+                                    file.type === 'pdf' ? 'bg-red-500/20' : 'bg-blue-500/20'
+                                  }`}>
+                                    {file.type === 'pdf' ? (
+                                      <FileText className="w-6 h-6 text-red-400" />
+                                    ) : (
+                                      <File className="w-6 h-6 text-blue-400" />
+                                    )}
+                                  </div>
+                                  <div className="flex-1 min-w-0">
+                                    <p className="text-sm font-medium text-white truncate">{file.name}</p>
+                                    <p className={`text-xs ${file.type === 'pdf' ? 'text-red-400/80' : 'text-blue-400/80'}`}>
+                                      {file.type === 'pdf' ? '📄 PDF' : '📝 Fichier'} {file.size && `• ${Math.round(file.size / 1024)} KB`}
+                                    </p>
+                                  </div>
+                                  <div className="flex items-center justify-center w-6 h-6 bg-green-500/20 rounded-full">
+                                    <span className="text-xs">✓</span>
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                          
+                          <div 
+                            className="prose prose-invert max-w-none"
+                            style={{ 
+                              direction: isArabicText(msg.content) ? 'rtl' : 'ltr',
+                              textAlign: isArabicText(msg.content) ? 'right' : 'left',
+                              unicodeBidi: 'embed'
+                            }}
+                          >
+                            <ReactMarkdown
                             components={{
                               // Style personnalisé pour les éléments markdown
                               h1: ({node, ...props}) => <h1 className="text-2xl font-bold mb-4 mt-6" {...props} />,
@@ -5604,7 +5662,8 @@ Ce document PDF a été analysé et son contenu textuel complet est ci-dessus. L
                           >
                             {msg.content}
                           </ReactMarkdown>
-                        </div>
+                          </div>
+                        </>
                       )}
                     </div>
                     
@@ -5780,24 +5839,45 @@ Ce document PDF a été analysé et son contenu textuel complet est ci-dessus. L
             {uploadedFiles.length > 0 && (
               <div className="mb-3 md:mb-4 flex flex-wrap gap-2">
                 {uploadedFiles.map((file, idx) => (
-                  <div key={idx} className="relative group">
-                    <div className="flex items-center gap-2 px-3 py-2 bg-blue-500/10 border border-blue-500/30 rounded-lg hover:bg-blue-500/20 transition-colors">
-                      <File className="w-5 h-5 text-blue-400" />
-                      <div className="flex flex-col">
-                        <span className="text-sm font-medium text-white truncate max-w-[150px]" title={file.name}>
+                  <div key={idx} className="relative group min-w-[200px] max-w-xs">
+                    <div className={`flex items-start gap-3 px-4 py-3 rounded-xl border-2 transition-all ${
+                      file.type === 'pdf' 
+                        ? 'bg-gradient-to-br from-red-500/10 to-pink-500/10 border-red-500/40 hover:border-red-500/60' 
+                        : 'bg-gradient-to-br from-blue-500/10 to-cyan-500/10 border-blue-500/30 hover:border-blue-500/50'
+                    } ${file.isLoading ? 'animate-pulse' : ''}`}>
+                      {file.type === 'pdf' ? (
+                        <div className="flex items-center justify-center w-12 h-12 bg-red-500/20 rounded-lg flex-shrink-0">
+                          {file.isLoading ? (
+                            <div className="w-6 h-6 border-2 border-red-400 border-t-transparent rounded-full animate-spin"></div>
+                          ) : (
+                            <FileText className="w-7 h-7 text-red-400" />
+                          )}
+                        </div>
+                      ) : (
+                        <File className="w-6 h-6 text-blue-400 flex-shrink-0 mt-1" />
+                      )}
+                      <div className="flex flex-col flex-1 min-w-0">
+                        <span className="text-sm font-semibold text-white truncate" title={file.name}>
                           {file.name}
                         </span>
-                        <span className="text-xs text-gray-400">
-                          {file.type === 'pdf' ? 'PDF' : 'Texte'}
+                        <span className={`text-xs font-medium ${file.type === 'pdf' ? 'text-red-400' : 'text-gray-400'}`}>
+                          {file.isLoading ? '⏳ Lecture en cours...' : file.type === 'pdf' ? `📄 PDF • ${Math.round((file.size || 0) / 1024)} KB` : '📝 Fichier Texte'}
                         </span>
+                        {file.isLoading && (
+                          <div className="mt-2 w-full bg-red-900/30 rounded-full h-1.5 overflow-hidden">
+                            <div className="h-full bg-gradient-to-r from-red-500 to-pink-500 rounded-full animate-[loading_2s_ease-in-out_infinite]"></div>
+                          </div>
+                        )}
                       </div>
-                      <button
-                        onClick={() => removeFile(idx)}
-                        className="ml-2 bg-red-500 text-white rounded-full p-1 hover:bg-red-600 transition-colors"
-                        title="Retirer"
-                      >
-                        <X className="w-3 h-3" />
-                      </button>
+                      {!file.isLoading && (
+                        <button
+                          onClick={() => removeFile(idx)}
+                          className="flex-shrink-0 bg-red-500/80 text-white rounded-full p-1.5 hover:bg-red-600 transition-colors shadow-lg"
+                          title="Retirer le fichier"
+                        >
+                          <X className="w-4 h-4" />
+                        </button>
+                      )}
                     </div>
                   </div>
                 ))}

@@ -146,3 +146,16 @@ body {
 .rotate-smooth {
   animation: rotate-smooth 3s linear infinite;
 }
+
+/* Animation de chargement pour les fichiers PDF */
+@keyframes loading {
+  0% {
+    transform: translateX(-100%);
+  }
+  50% {
+    transform: translateX(0%);
+  }
+  100% {
+    transform: translateX(100%);
+  }
+}

@@ -1,11 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { GoogleGenerativeAI } from '@google/generative-ai';
+import { GoogleAIFileManager } from '@google/generative-ai/server';
 import { writeFile, unlink } from 'fs/promises';
 import { join } from 'path';
 import { tmpdir } from 'os';
 
 export async function POST(request: NextRequest): Promise<Response> {
   let tempFilePath: string | null = null;
-
+  
   try {
     const formData = await request.formData();
     const file = formData.get('file') as File | null;
@@ -15,34 +17,75 @@ export async function POST(request: NextRequest): Promise<Response> {
     const bytes = await file.arrayBuffer();
     const buffer = Buffer.from(bytes);
 
-    tempFilePath = join(tmpdir(), `pdf_${Date.now()}_${file.name}`);
+    console.log(`[PDF Gemini] 📄 Lecture avec Gemini API: ${file.name} (${file.size} bytes)`);
+
+    // Sauvegarder temporairement le PDF
+    tempFilePath = join(tmpdir(), `pdf-${Date.now()}-${file.name}`);
     await writeFile(tempFilePath, buffer);
+    console.log(`[PDF Gemini] 💾 Sauvegardé: ${tempFilePath}`);
 
-    // Import dynamique au runtime seulement
-    const pdfModule = await import('pdf-parse').catch(() => null);
-    if (!pdfModule) {
-      return NextResponse.json({ error: 'Parser non disponible' }, { status: 500 });
-    }
-    const parse = (pdfModule as any).default ?? pdfModule;
-    const data = await parse(buffer);
+    // Upload le PDF vers Gemini File API
+    const fileManager = new GoogleAIFileManager(process.env.GEMINI_API_KEY || '');
+    
+    console.log('[PDF Gemini] ☁️  Upload vers Gemini File API...');
+    const uploadResult = await fileManager.uploadFile(tempFilePath, {
+      mimeType: 'application/pdf',
+      displayName: file.name,
+    });
+    
+    console.log(`[PDF Gemini] ✅ Uploadé: ${uploadResult.file.uri}`);
 
-    const text = data?.text ?? '';
-    const numPages = Number(data?.numpages ?? 0);
+    // Demander à Gemini d'extraire le texte
+    const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || '');
+    const model = genAI.getGenerativeModel({ model: 'gemini-2.0-flash-exp' });
+
+    console.log('[PDF Gemini] 🤖 Extraction du texte avec Gemini...');
+    const result = await model.generateContent([
+      {
+        fileData: {
+          mimeType: uploadResult.file.mimeType,
+          fileUri: uploadResult.file.uri,
+        },
+      },
+      {
+        text: `Extrais TOUT le texte de ce document PDF. Retourne UNIQUEMENT le texte brut, sans commentaire, sans formatage markdown. Inclus tous les titres, paragraphes, et contenu. Si c'est un PDF scanné, utilise ta vision pour lire le texte.`,
+      },
+    ]);
+
+    const text = result.response.text();
+    console.log(`[PDF Gemini] 🎉 ${text.length} caractères extraits!`);
+    console.log(`[PDF Gemini] Aperçu: ${text.substring(0, 200)}`);
+
+    // Supprimer le fichier de Gemini
+    await fileManager.deleteFile(uploadResult.file.name);
+    console.log('[PDF Gemini] 🗑️  Fichier supprimé de Gemini');
 
     return NextResponse.json({
-      success: true,
+      success: text.length > 0,
       text: text.trim(),
-      numPages,
+      numPages: 0, // Gemini ne donne pas le nombre de pages
       fileName: file.name,
-      fileSize: file.size
+      fileSize: file.size,
+      isScanned: false,
     });
   } catch (err) {
-    console.error('Erreur parsing PDF:', err);
-    return NextResponse.json(
-      { error: "Erreur lors de l'extraction du texte PDF", details: err instanceof Error ? err.message : String(err) },
-      { status: 500 }
-    );
+    console.error('[PDF Gemini] ❌ Erreur:', err);
+    return NextResponse.json({
+      success: false,
+      text: '',
+      numPages: 0,
+      fileName: '',
+      fileSize: 0,
+      error: err instanceof Error ? err.message : String(err),
+      isScanned: true,
+    }, { status: 200 });
   } finally {
-    if (tempFilePath) await unlink(tempFilePath).catch(() => {});
+    // Nettoyer le fichier temporaire
+    if (tempFilePath) {
+      try {
+        await unlink(tempFilePath);
+        console.log('[PDF Gemini] 🧹 Fichier temp supprimé');
+      } catch {}
+    }
   }
 }
