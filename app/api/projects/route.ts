@@ -48,16 +48,27 @@ export async function POST(req: NextRequest) {
 
 export async function PUT(req: NextRequest) {
   try {
-    const { id, title, description } = await req.json();
+    const { id, title, description, projectType } = await req.json();
 
-    if (!id || !title) {
+    if (!id) {
       return NextResponse.json(
-        { error: 'ID et titre sont requis' },
+        { error: 'ID requis' },
         { status: 400 }
       );
     }
 
-    updateProject(Number(id), title, description);
+    // Si on change le type de projet
+    if (projectType) {
+      const { db } = await import('@/lib/database');
+      const stmt = db.prepare('UPDATE projects SET project_type = ? WHERE id = ?');
+      stmt.run(projectType, Number(id));
+    }
+    
+    // Si on change le titre ou la description
+    if (title) {
+      updateProject(Number(id), title, description);
+    }
+    
     const project = getProject(Number(id));
 
     return NextResponse.json(project);

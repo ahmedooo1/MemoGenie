@@ -92,126 +92,66 @@ interface ProjectTypeInfo {
   gradient?: string; // Optional gradient for UI
 }
 
+// 🚀 ARCHITECTURE SIMPLIFIÉE - 3 OUTILS PUISSANTS
 const PROJECT_TYPES: ProjectTypeInfo[] = [
   {
     id: 'chatbot',
-    name: 'Chatbot Général',
+    name: '💬 MemoGenie',
     icon: Sparkles,
     emoji: '💬',
-    description: 'Assistant IA polyvalent pour toutes vos questions',
+    description: 'Assistant IA ultra-puissant avec intelligence avancée et capacités complètes',
     color: 'blue',
     gradient: 'from-blue-500 to-cyan-500',
-    features: ['Conversations naturelles', 'Réponses contextuelles', 'Multi-sujets']
+    features: [
+      '🤖 IA de nouvelle génération - Raisonnement avancé',
+      '🔍 Recherche web en temps réel',
+      '📊 Analyse de données & interprétation de code',
+      '👀 Vision avancée - Analyse d\'images',
+      '📄 Analyse de fichiers (PDF, documents)',
+      '🧠 Mémoire longue durée',
+      '✍️ Rédaction créative & professionnelle',
+      '🌍 Traduction multi-langues',
+      '📱 Contenu réseaux sociaux',
+      '� Documents professionnels',
+      '✉️ Emails & correspondance',
+      '🎯 Optimisation de prompts',
+      '📦 Compression de texte',
+      '� Analyse statistique',
+      '🎨 Et bien plus encore !'
+    ]
   },
   {
     id: 'ai-editor',
-    name: 'Éditeur IA (WYSIWYG)',
+    name: '📝 IDE AI',
     icon: Edit2,
     emoji: '📝',
-    description: 'Éditeur de texte enrichi avec assistance IA complète',
+    description: 'Éditeur WYSIWYG professionnel avec IA intégrée - Pour rédiger des documents enrichis',
     color: 'violet',
     gradient: 'from-violet-500 to-purple-600',
-    features: ['Éditeur WYSIWYG', 'Assistance IA en temps réel', 'Formatage avancé', 'Commandes IA intégrées']
-  },
-  {
-    id: 'memoir',
-    name: 'Mémoire Académique',
-    icon: BookOpen,
-    emoji: '📚',
-    description: 'Rédaction de thèses et mémoires universitaires',
-    color: 'purple',
-    gradient: 'from-purple-500 to-pink-500',
-    features: ['Structure académique', 'Citations et références', 'Chapitres organisés']
+    features: [
+      '✍️ Éditeur WYSIWYG complet',
+      '🎨 Formatage avancé (gras, italique, titres)',
+      '🤖 Assistance IA en temps réel',
+      '📋 Commandes IA intégrées',
+      '📄 Export PDF & Word',
+      '📚 Idéal pour thèses, mémoires, rapports'
+    ]
   },
   {
     id: 'image-studio',
-    name: 'Studio d\'Images IA',
+    name: '🎨 Studio Image',
     icon: Palette,
     emoji: '🎨',
-    description: 'Génération et modification d\'images',
+    description: 'Génération et modification d\'images IA - Créativité illimitée',
     color: 'pink',
     gradient: 'from-pink-500 to-rose-500',
-    features: ['Génération d\'images', 'Modification créative', 'Styles variés']
-  },
-  {
-    id: 'creative-writing',
-    name: 'Rédaction Créative',
-    icon: Pen,
-    emoji: '✍️',
-    description: 'Romans, nouvelles et histoires',
-    color: 'orange',
-    gradient: 'from-orange-500 to-amber-500',
-    features: ['Création de personnages', 'Développement d\'intrigues', 'Styles littéraires']
-  },
-  {
-    id: 'social-media',
-    name: 'Réseaux Sociaux',
-    icon: MessageSquare,
-    emoji: '📱',
-    description: 'Posts optimisés pour réseaux sociaux',
-    color: 'green',
-    gradient: 'from-green-500 to-emerald-500',
-    features: ['Posts engageants', 'Hashtags optimisés', 'Multi-plateformes']
-  },
-  {
-    id: 'professional-docs',
-    name: 'Documents Professionnels',
-    icon: Briefcase,
-    emoji: '💼',
-    description: 'Rapports et présentations',
-    color: 'indigo',
-    gradient: 'from-indigo-500 to-purple-500',
-    features: ['Rapports structurés', 'Présentations PowerPoint', 'Documents formels']
-  },
-  {
-    id: 'emails',
-    name: 'Emails & Correspondance',
-    icon: Mail,
-    emoji: '✉️',
-    description: 'Rédaction d\'emails professionnels',
-    color: 'cyan',
-    gradient: 'from-cyan-500 to-blue-500',
-    features: ['Ton professionnel', 'Réponses rapides', 'Templates personnalisés']
-  },
-  {
-    id: 'translation',
-    name: 'Traduction',
-    icon: Globe,
-    emoji: '🌍',
-    description: 'Traduction contextuelle multi-langues',
-    color: 'teal',
-    gradient: 'from-teal-500 to-cyan-500',
-    features: ['Traduction précise', 'Contexte préservé', '50+ langues']
-  },
-  {
-    id: 'prompt-generator',
-    name: 'Prompt Generator',
-    icon: Target,
-    emoji: '🎯',
-    description: 'Optimiser vos prompts pour IA',
-    color: 'amber',
-    gradient: 'from-amber-500 to-yellow-500',
-    features: ['Prompts optimisés', 'Instructions claires', 'Meilleurs résultats']
-  },
-  {
-    id: 'text-minify',
-    name: 'Minificateur de Texte',
-    icon: Minimize2,
-    emoji: '📦',
-    description: 'Compresser et réduire vos textes',
-    color: 'slate',
-    gradient: 'from-slate-500 to-gray-500',
-    features: ['Compression intelligente', 'Préservation du sens', 'Réduction de taille']
-  },
-  {
-    id: 'word-counter',
-    name: 'Compteur de Mots',
-    icon: Calculator,
-    emoji: '🔢',
-    description: 'Analyse complète de vos textes',
-    color: 'emerald',
-    gradient: 'from-emerald-500 to-teal-500',
-    features: ['Compte mots & caractères', 'Analyse de phrases', 'Statistiques détaillées']
+    features: [
+      '🖼️ Génération d\'images IA',
+      '✨ Modification créative',
+      '🎭 Styles variés',
+      '📸 Galerie intégrée',
+      '🔧 Édition avancée'
+    ]
   }
 ];
 
@@ -442,6 +382,42 @@ export default function Home() {
   useEffect(() => {
     loadProjects();
   }, []);
+
+  // 🚀 Créer automatiquement un projet par défaut si aucun n'existe (UNE SEULE FOIS)
+  useEffect(() => {
+    const initializeDefaultProject = async () => {
+      // Vérifier qu'on a chargé les projets ET qu'il n'y en a aucun
+      if (projects.length === 0) {
+        // Double vérification : recharger depuis la DB pour être sûr
+        const res = await fetch('/api/projects', {
+          headers: {
+            'x-user-id': getUserId()
+          }
+        });
+        const dbProjects = await res.json();
+        
+        // Si vraiment aucun projet n'existe dans la DB, en créer un
+        if (dbProjects.length === 0) {
+          const defaultTitle = 'Nouvelle conversation';
+          await createNewProject(defaultTitle, 'Assistant IA ultra-puissant', 'chatbot');
+        } else {
+          // Il y a des projets dans la DB, recharger la liste
+          setProjects(dbProjects);
+          if (!selectedProject) {
+            setSelectedProject(dbProjects[0]);
+          }
+        }
+      } else if (!selectedProject && projects.length > 0) {
+        // Sélectionner le premier projet si aucun n'est sélectionné
+        setSelectedProject(projects[0]);
+      }
+    };
+    
+    // N'exécuter qu'une seule fois quand les projets sont chargés
+    if (projects.length === 0) {
+      initializeDefaultProject();
+    }
+  }, [projects.length]);
 
   // Charger les chapitres et conversations quand un projet est sélectionné
   useEffect(() => {
@@ -3645,6 +3621,147 @@ Ce document PDF a été analysé et son contenu textuel complet est ci-dessus. L
     }
   };
 
+  // 🤖 RENOMMAGE AUTOMATIQUE INTELLIGENT
+  const autoRenameProject = async (projectId: number, firstMessage: string) => {
+    try {
+      // Dictionnaire d'expansion des abréviations et termes techniques
+      const expansions: { [key: string]: string } = {
+        // Langages de programmation
+        'js': 'JavaScript',
+        'javascript': 'JavaScript',
+        'ts': 'TypeScript',
+        'typescript': 'TypeScript',
+        'py': 'Python',
+        'python': 'Python',
+        'java': 'Java',
+        'c\\+\\+': 'C++',
+        'cpp': 'C++',
+        'c#': 'C#',
+        'csharp': 'C#',
+        'php': 'PHP',
+        'ruby': 'Ruby',
+        'go': 'Go',
+        'rust': 'Rust',
+        'swift': 'Swift',
+        'kotlin': 'Kotlin',
+        
+        // Frameworks & Libraries
+        'react': 'React',
+        'reactjs': 'React',
+        'vue': 'Vue.js',
+        'vuejs': 'Vue.js',
+        'angular': 'Angular',
+        'node': 'Node.js',
+        'nodejs': 'Node.js',
+        'express': 'Express.js',
+        'next': 'Next.js',
+        'nextjs': 'Next.js',
+        'nuxt': 'Nuxt.js',
+        'svelte': 'Svelte',
+        'django': 'Django',
+        'flask': 'Flask',
+        'laravel': 'Laravel',
+        
+        // Concepts
+        'api': 'API',
+        'apis': 'APIs',
+        'rest': 'REST',
+        'graphql': 'GraphQL',
+        'sql': 'SQL',
+        'nosql': 'NoSQL',
+        'db': 'base de données',
+        'bdd': 'base de données',
+        'ia': 'IA',
+        'ai': 'IA',
+        'ml': 'Machine Learning',
+        'dl': 'Deep Learning',
+        'css': 'CSS',
+        'html': 'HTML',
+        'json': 'JSON',
+        'xml': 'XML',
+        'git': 'Git',
+        'github': 'GitHub',
+        'docker': 'Docker',
+        'kubernetes': 'Kubernetes',
+        'aws': 'AWS',
+        'azure': 'Azure',
+        'gcp': 'Google Cloud',
+        
+        // Verbes courants à transformer
+        'explique': 'Explication',
+        'explique-moi': 'Explication',
+        'expliquer': 'Explication',
+        'aide': 'Aide avec',
+        'aide-moi': 'Aide avec',
+        'aider': 'Aide avec',
+        'apprendre': 'Apprentissage',
+        'apprends': 'Apprentissage',
+        'comprendre': 'Comprendre',
+        'c\'est quoi': 'Qu\'est-ce que',
+        'cest quoi': 'Qu\'est-ce que',
+        'qu\'est-ce': 'Qu\'est-ce que',
+        'quest-ce': 'Qu\'est-ce que'
+      };
+      
+      // Nettoyer le message des commandes d'images
+      let cleanMessage = firstMessage
+        .replace(/g[eé]n[eè]re[-\s]*(moi|nous)?\s*(une?)?\s*image\s*(de|du|d')?/gi, '')
+        .replace(/cr[eé][eé][-\s]*(moi|nous)?\s*(une?)?\s*image\s*(de|du|d')?/gi, '')
+        .replace(/fais[-\s]*(moi|nous)?\s*(une?)?\s*image\s*(de|du|d')?/gi, '')
+        .replace(/dessine[-\s]*(moi|nous)?\s*/gi, '')
+        .trim();
+      
+      // Si c'est une demande d'image, utiliser le sujet de l'image
+      if (cleanMessage !== firstMessage && cleanMessage.length > 0) {
+        firstMessage = cleanMessage;
+      }
+      
+      // Générer un titre intelligent
+      let newTitle = firstMessage.slice(0, 60).trim();
+      
+      // Appliquer les expansions (insensible à la casse)
+      Object.entries(expansions).forEach(([pattern, replacement]) => {
+        const regex = new RegExp(`\\b${pattern}\\b`, 'gi');
+        newTitle = newTitle.replace(regex, replacement);
+      });
+      
+      // Capitaliser la première lettre
+      newTitle = newTitle.charAt(0).toUpperCase() + newTitle.slice(1);
+      
+      // Nettoyer les espaces multiples
+      newTitle = newTitle.replace(/\s+/g, ' ');
+      
+      // Si le message original est trop long, couper intelligemment
+      if (firstMessage.length > 60) {
+        const lastSpace = newTitle.lastIndexOf(' ');
+        if (lastSpace > 20) { // Au moins 20 caractères
+          newTitle = newTitle.slice(0, lastSpace) + '...';
+        } else if (newTitle.length > 20) {
+          newTitle = newTitle + '...';
+        }
+      }
+      
+      // Si le titre est vide ou trop court, utiliser un titre par défaut
+      if (!newTitle || newTitle.length < 3) {
+        newTitle = 'Nouvelle conversation';
+      }
+      
+      // Limiter à 70 caractères max
+      if (newTitle.length > 70) {
+        const lastSpace = newTitle.slice(0, 67).lastIndexOf(' ');
+        newTitle = (lastSpace > 20 ? newTitle.slice(0, lastSpace) : newTitle.slice(0, 67)) + '...';
+      }
+      
+      // Mettre à jour le projet avec le nouveau titre
+      await updateProjectName(projectId, newTitle);
+      
+      console.log('✅ Projet renommé automatiquement:', newTitle);
+    } catch (error) {
+      console.error('❌ Erreur renommage automatique:', error);
+      // Ne pas afficher d'erreur à l'utilisateur, c'est juste un nice-to-have
+    }
+  };
+
   const sendMessage = async () => {
     if ((!inputMessage.trim() && uploadedImages.length === 0 && uploadedFiles.length === 0) || !selectedProject || isGenerating) return;
 
@@ -4064,6 +4181,12 @@ Ce document PDF a été analysé et son contenu textuel complet est ci-dessus. L
       setMessages([...messages, userMessage, { role: 'assistant', content: fullContent }]);
       setStreamingContent('');
       
+      // ✨ RENOMMAGE AUTOMATIQUE DU PROJET
+      // Si c'est le premier message du projet (nouveau chat), générer un titre intelligent
+      if (messages.length === 0 && selectedProject) {
+        await autoRenameProject(selectedProject.id, userMessage.content);
+      }
+      
       // 🎨 AUTO-GÉNÉRATION : Si l'IA répond avec "🎨 Génération de l'image en cours...", générer automatiquement
       if (fullContent.includes('🎨 Génération de l\'image en cours...') || 
           fullContent.includes('🎨 Generation de l\'image en cours...')) {
@@ -4228,11 +4351,15 @@ Ce document PDF a été analysé et son contenu textuel complet est ci-dessus. L
           </div>
           
           <button
-            onClick={() => setShowNewProjectModal(true)}
+            onClick={async () => {
+              // Créer directement un nouveau chatbot avec un nom temporaire simple
+              const defaultTitle = 'Nouvelle conversation';
+              await createNewProject(defaultTitle, 'Assistant IA ultra-puissant', 'chatbot');
+            }}
             className="w-full flex items-center justify-center gap-2 px-4 py-3 bg-gradient-to-r from-purple-500 to-pink-500 text-white rounded-lg hover:opacity-90 transition-opacity"
           >
             <Plus className="w-5 h-5" />
-            Nouveau Projet
+            Nouveau Chat
           </button>
         </div>
 
@@ -4384,8 +4511,44 @@ Ce document PDF a été analysé et son contenu textuel complet est ci-dessus. L
             </button>
             
             {selectedProject && (
-              <div className="flex items-center gap-2 min-w-0 flex-1 overflow-hidden">
+              <div className="flex items-center gap-2 md:gap-4 min-w-0 flex-1 overflow-hidden">
                 <h2 className="text-white font-semibold truncate text-sm md:text-base">{selectedProject.title}</h2>
+                
+                {/* Sélecteur de Mode (3 outils) */}
+                <div className="flex items-center gap-1 bg-white/5 rounded-lg p-1 border border-white/10 flex-shrink-0">
+                  {PROJECT_TYPES.map((type) => {
+                    const Icon = type.icon;
+                    const isActive = selectedProject.project_type === type.id;
+                    return (
+                      <button
+                        key={type.id}
+                        onClick={async () => {
+                          // Changer le type du projet actuel
+                          await fetch('/api/projects', {
+                            method: 'PUT',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ 
+                              id: selectedProject.id, 
+                              projectType: type.id 
+                            }),
+                          });
+                          setSelectedProject({ ...selectedProject, project_type: type.id });
+                          showToast('success', `✨ Mode ${type.name} activé !`);
+                        }}
+                        className={`flex items-center gap-1.5 px-2 md:px-3 py-1.5 rounded-md transition-all ${
+                          isActive
+                            ? `bg-gradient-to-r ${type.gradient} text-white`
+                            : 'text-gray-400 hover:text-white hover:bg-white/10'
+                        }`}
+                        title={type.name}
+                      >
+                        <Icon className="w-4 h-4" />
+                        <span className="text-xs hidden md:inline font-medium">{type.emoji}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+                
                 {selectedChapter && (
                   <>
                     <ChevronRight className="w-4 h-4 text-gray-400 flex-shrink-0 hidden md:block" />
@@ -4533,7 +4696,7 @@ Ce document PDF a été analysé et son contenu textuel complet est ci-dessus. L
                 </div>
                 <button
                   onClick={() => setShowGallery(false)}
-                  className="px-4 py-2 bg-gray-100 hover:bg-gray-200 text-white rounded-lg transition-colors"
+                  className="px-4 py-2 bg-white/10 text-white border border-white/20 hover:bg-white/20 rounded-lg transition-colors"
                 >
                   Retour
                 </button>
@@ -4596,7 +4759,7 @@ Ce document PDF a été analysé et son contenu textuel complet est ci-dessus. L
               <div className="text-center">
                 <Sparkles className="w-16 h-16 text-purple-500 mx-auto mb-4 animate-float" />
                 <h2 className="text-2xl font-bold text-white mb-2">
-                  Bienvenue sur MemoGenie 🚀
+                  MemoGenie
                 </h2>
                 <p className="text-gray-400">
                   Créez un projet pour commencer ou discutez directement avec l'IA
@@ -5211,7 +5374,7 @@ Ce document PDF a été analysé et son contenu textuel complet est ci-dessus. L
                       <div className="flex gap-3 mt-6">
                         <button
                           onClick={() => setShowTableModal(false)}
-                          className="flex-1 px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors font-medium"
+                          className="flex-1 px-4 py-2 bg-white/10 text-white border border-white/20 rounded-lg hover:bg-white/20 transition-colors font-medium"
                         >
                           Annuler
                         </button>
@@ -5228,64 +5391,105 @@ Ce document PDF a été analysé et son contenu textuel complet est ci-dessus. L
               </AnimatePresence>
             </div>
           ) : messages.length === 0 ? (
-            // Projet sélectionné mais vide - Afficher message d'accueil selon le type
-            <div className="flex items-center justify-center h-full">
-              <div className="max-w-2xl text-center px-6">
+            // Projet sélectionné mais vide - Afficher suggestions de prompts
+            <div className="flex items-center justify-center h-full p-6">
+              <div className="max-w-4xl w-full">
                 {(() => {
                   const projectTypeInfo = PROJECT_TYPES.find(t => t.id === (selectedProject.project_type || 'chatbot'));
                   if (!projectTypeInfo) return null;
                   
                   const Icon = projectTypeInfo.icon;
                   
+                  // Suggestions de prompts selon le type de projet
+                  const promptSuggestions = {
+                    chatbot: [
+                      { emoji: '💡', text: 'Explique-moi un concept complexe de manière simple', category: 'Apprentissage' },
+                      { emoji: '💻', text: 'Aide-moi à déboguer ce code Python', category: 'Code' },
+                      { emoji: '✍️', text: 'Écris un email professionnel pour...', category: 'Rédaction' },
+                      { emoji: '🎨', text: 'Génère une image d\'un paysage futuriste', category: 'Créatif' },
+                      { emoji: '🌍', text: 'Traduis ce texte en plusieurs langues', category: 'Traduction' },
+                      { emoji: '📊', text: 'Analyse ces données et donne-moi des insights', category: 'Analyse' },
+                      { emoji: '🤔', text: 'Donne-moi des conseils pour...', category: 'Conseils' },
+                      { emoji: '📝', text: 'Résume ce long document en points clés', category: 'Productivité' }
+                    ],
+                    'ai-editor': [
+                      { emoji: '📚', text: 'Aide-moi à structurer mon mémoire académique', category: 'Académique' },
+                      { emoji: '✍️', text: 'Rédige une introduction captivante pour...', category: 'Rédaction' },
+                      { emoji: '📊', text: 'Crée un plan détaillé pour mon rapport', category: 'Structure' },
+                      { emoji: '🔍', text: 'Améliore ce paragraphe pour le rendre plus clair', category: 'Révision' }
+                    ],
+                    'image-studio': [
+                      { emoji: '🎨', text: 'Génère une image d\'un chat astronaute', category: 'Créatif' },
+                      { emoji: '🌆', text: 'Crée une ville cyberpunk avec des néons', category: 'Urbain' },
+                      { emoji: '🌿', text: 'Dessine une forêt magique avec des créatures fantastiques', category: 'Fantasy' },
+                      { emoji: '🚗', text: 'Une voiture de course futuriste en 3D', category: 'Technologie' }
+                    ]
+                  };
+
+                  const suggestions = promptSuggestions[projectTypeInfo.id as keyof typeof promptSuggestions] || promptSuggestions.chatbot;
+                  
                   return (
                     <motion.div
-                      initial={{ opacity: 0, scale: 0.9 }}
-                      animate={{ opacity: 1, scale: 1 }}
-                      className="space-y-6"
+                      initial={{ opacity: 0, y: 20 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      className="space-y-8"
                     >
-                      <div className={`inline-flex items-center justify-center w-20 h-20 rounded-full bg-gradient-to-br ${projectTypeInfo.gradient} mb-4`}>
-                        <Icon className="w-10 h-10 text-white" />
-                      </div>
-                      
-                      <h2 className="text-3xl font-bold text-white">
-                        {selectedProject.title}
-                      </h2>
-                      
-                      {selectedProject.description && (
-                        <p className="text-lg text-gray-300">
-                          {selectedProject.description}
-                        </p>
-                      )}
-                      
-                      <div className="bg-white/5 backdrop-blur-sm rounded-xl p-6 border border-white/10">
-                        <h3 className="text-xl font-semibold text-white mb-3 flex items-center gap-2">
-                          <span>{projectTypeInfo.emoji}</span>
-                          <span>{projectTypeInfo.name}</span>
-                        </h3>
-                        <p className="text-gray-300 mb-4">
-                          {projectTypeInfo.description}
-                        </p>
+                      {/* Header avec icône et titre */}
+                      <div className="text-center space-y-4">
+                        <div className={`inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-gradient-to-br ${projectTypeInfo.gradient}`}>
+                          <Icon className="w-8 h-8 text-white" />
+                        </div>
                         
-                        {projectTypeInfo.features && projectTypeInfo.features.length > 0 && (
-                          <div className="space-y-2 text-left">
-                            <p className="text-sm font-semibold text-purple-300">
-                              ✨ Fonctionnalités :
-                            </p>
-                            <ul className="text-sm text-gray-400 space-y-1">
-                              {projectTypeInfo.features.map((feature, idx) => (
-                                <li key={idx} className="flex items-start gap-2">
-                                  <span className="text-purple-400">•</span>
-                                  <span>{feature}</span>
-                                </li>
-                              ))}
-                            </ul>
-                          </div>
-                        )}
+                        <div>
+                          <h2 className="text-3xl md:text-4xl font-bold text-white mb-2">
+                            {projectTypeInfo.name}
+                          </h2>
+                          <p className="text-gray-400 text-lg">
+                            {projectTypeInfo.description}
+                          </p>
+                        </div>
                       </div>
                       
-                      <p className="text-gray-400 text-sm">
-                        💬 Commencez à taper votre message ci-dessous pour démarrer !
-                      </p>
+                      {/* Grille de suggestions de prompts */}
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                        {suggestions.map((suggestion, idx) => (
+                          <motion.button
+                            key={idx}
+                            initial={{ opacity: 0, y: 20 }}
+                            animate={{ opacity: 1, y: 0 }}
+                            transition={{ delay: idx * 0.05 }}
+                            onClick={() => {
+                              setInputMessage(suggestion.text);
+                              // Auto-focus sur l'input
+                              setTimeout(() => {
+                                const input = document.querySelector('textarea[placeholder*="message"]') as HTMLTextAreaElement;
+                                if (input) input.focus();
+                              }, 100);
+                            }}
+                            className="group relative bg-white/5 hover:bg-white/10 border border-white/10 hover:border-purple-500/50 rounded-xl p-4 text-left transition-all duration-200 hover:scale-[1.02]"
+                          >
+                            <div className="flex items-start gap-3">
+                              <span className="text-2xl flex-shrink-0">{suggestion.emoji}</span>
+                              <div className="flex-1 min-w-0">
+                                <span className="text-xs font-semibold text-purple-400 mb-1 block">
+                                  {suggestion.category}
+                                </span>
+                                <p className="text-white text-sm leading-relaxed group-hover:text-purple-200 transition-colors">
+                                  {suggestion.text}
+                                </p>
+                              </div>
+                              <ChevronRight className="w-4 h-4 text-gray-500 group-hover:text-purple-400 transition-colors flex-shrink-0 opacity-0 group-hover:opacity-100" />
+                            </div>
+                          </motion.button>
+                        ))}
+                      </div>
+                      
+                      {/* Message d'aide */}
+                      <div className="text-center">
+                        <p className="text-gray-500 text-sm">
+                          � Cliquez sur une suggestion ou tapez votre propre message ci-dessous
+                        </p>
+                      </div>
                     </motion.div>
                   );
                 })()}
@@ -5344,13 +5548,13 @@ Ce document PDF a été analysé et son contenu textuel complet est ci-dessus. L
                           <div className="flex gap-2 justify-end">
                             <button
                               onClick={cancelEditMessage}
-                              className="px-3 py-1 text-sm bg-gray-100 hover:bg-gray-200 rounded-lg transition-colors"
+                              className="px-3 py-1 text-sm bg-white/10 text-white border border-white/20 hover:bg-white/20 rounded-lg transition-colors"
                             >
                               Annuler
                             </button>
                             <button
                               onClick={saveEditMessage}
-                              className="px-3 py-1 text-sm bg-green-500 hover:bg-green-600 rounded-lg transition-colors"
+                              className="px-3 py-1 text-sm bg-green-500 text-white hover:bg-green-600 rounded-lg transition-colors"
                             >
                               Sauvegarder
                             </button>
@@ -5992,7 +6196,7 @@ Ce document PDF a été analysé et son contenu textuel complet est ci-dessus. L
               <div className="p-6 bg-slate-900/50 border-t border-white/10 flex gap-3">
                 <button
                   onClick={confirmDialog.onCancel}
-                  className="flex-1 px-4 py-3 bg-gray-100 hover:bg-gray-200 text-white rounded-lg transition-colors font-medium"
+                  className="flex-1 px-4 py-3 bg-white/10 text-white border border-white/20 hover:bg-white/20 rounded-lg transition-colors font-medium"
                 >
                   {confirmDialog.cancelText || 'Annuler'}
                 </button>
@@ -6064,7 +6268,7 @@ Ce document PDF a été analysé et son contenu textuel complet est ci-dessus. L
               <div className="p-6 bg-slate-900/50 border-t border-white/10 flex gap-3">
                 <button
                   onClick={inputDialog.onCancel}
-                  className="flex-1 px-4 py-3 bg-gray-100 hover:bg-gray-200 text-white rounded-lg transition-colors font-medium"
+                  className="flex-1 px-4 py-3 bg-white/10 text-white border border-white/20 hover:bg-white/20 rounded-lg transition-colors font-medium"
                 >
                   {inputDialog.cancelText || 'Annuler'}
                 </button>
