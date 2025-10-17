@@ -2816,7 +2816,7 @@ L'utilisateur veut que tu analyses ce document. Réponds directement à sa quest
       setEditingMessageIndex(null);
       setEditedContent('');
       
-      // Si c'était un message utilisateur de demande d'image, on régénère
+      // Si c'était un message utilisateur, on régénère la réponse
       if (editedMessage.role === 'user') {
         const imageGenerationPatterns = [
           /g[eé]n[eè]re[-\s]*(moi|nous)?\s*(une?)?\s*image/i,
@@ -2976,6 +2976,125 @@ L'utilisateur veut que tu analyses ce document. Réponds directement à sa quest
             showToast('error', 'Erreur lors de la régénération');
           } finally {
             setIsGeneratingImage(false);
+          }
+        } else {
+          // Si ce n'est PAS une demande d'image, régénérer la réponse texte
+          showToast('info', '🔄 Régénération de la réponse...');
+          
+          // Supprimer la réponse assistant suivante s'il y en a une
+          const nextMessageIndex = editingMessageIndex + 1;
+          const newMessages = [...updatedMessages];
+          
+          if (nextMessageIndex < newMessages.length && newMessages[nextMessageIndex].role === 'assistant') {
+            // Supprimer l'ancienne réponse de la BDD si elle a un ID
+            if (newMessages[nextMessageIndex].id) {
+              try {
+                await fetch(`/api/delete-message?id=${newMessages[nextMessageIndex].id}`, {
+                  method: 'DELETE'
+                });
+              } catch (error) {
+                console.error('Erreur suppression ancienne réponse:', error);
+              }
+            }
+            newMessages.splice(nextMessageIndex, 1);
+          }
+          
+          setMessages(newMessages);
+          
+          // Sauvegarder le message modifié en BDD
+          if (selectedProject && editedMessage.id) {
+            try {
+              await fetch('/api/save-message', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                  id: editedMessage.id,
+                  projectId: selectedProject.id,
+                  role: 'user',
+                  content: editedContent,
+                  chapterId: selectedChapter?.id
+                }),
+              });
+            } catch (error) {
+              console.error('Erreur sauvegarde message modifié:', error);
+            }
+          }
+          
+          // Régénérer la réponse avec le nouveau message
+          setIsGenerating(true);
+          setStreamingContent('');
+          
+          try {
+            const response = await fetch('/api/chat', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                projectId: selectedProject?.id,
+                message: editedContent,
+                chapterId: selectedChapter?.id
+              }),
+            });
+
+            if (!response.body) throw new Error('Pas de body dans la réponse');
+
+            const reader = response.body.getReader();
+            const decoder = new TextDecoder();
+            let fullResponse = '';
+
+            while (true) {
+              const { value, done } = await reader.read();
+              if (done) break;
+
+              const chunk = decoder.decode(value, { stream: true });
+              const lines = chunk.split('\n');
+
+              for (const line of lines) {
+                if (line.startsWith('data: ')) {
+                  const data = line.slice(6);
+                  if (data === '[DONE]') continue;
+
+                  try {
+                    const parsed = JSON.parse(data);
+                    if (parsed.content) {
+                      fullResponse += parsed.content;
+                      setStreamingContent(fullResponse);
+                    }
+                  } catch (e) {
+                    // Ignorer les erreurs de parsing
+                  }
+                }
+              }
+            }
+
+            // Ajouter la nouvelle réponse aux messages
+            const assistantMessage = {
+              role: 'assistant' as const,
+              content: fullResponse
+            };
+            
+            setMessages(prev => [...prev, assistantMessage]);
+            
+            // Sauvegarder la nouvelle réponse en BDD
+            if (selectedProject) {
+              await fetch('/api/save-message', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                  projectId: selectedProject.id,
+                  role: 'assistant',
+                  content: fullResponse,
+                  chapterId: selectedChapter?.id
+                }),
+              });
+            }
+            
+            showToast('success', '✅ Réponse régénérée !');
+          } catch (error) {
+            console.error('Erreur régénération:', error);
+            showToast('error', 'Erreur lors de la régénération');
+          } finally {
+            setIsGenerating(false);
+            setStreamingContent('');
           }
         }
       }
@@ -3637,141 +3756,123 @@ L'utilisateur veut que tu analyses ce document. Réponds directement à sa quest
   // 🤖 RENOMMAGE AUTOMATIQUE INTELLIGENT
   const autoRenameProject = async (projectId: number, firstMessage: string) => {
     try {
-      // Dictionnaire d'expansion des abréviations et termes techniques
-      const expansions: { [key: string]: string } = {
-        // Langages de programmation
-        'js': 'JavaScript',
-        'javascript': 'JavaScript',
-        'ts': 'TypeScript',
-        'typescript': 'TypeScript',
-        'py': 'Python',
-        'python': 'Python',
-        'java': 'Java',
-        'c\\+\\+': 'C++',
-        'cpp': 'C++',
-        'c#': 'C#',
-        'csharp': 'C#',
-        'php': 'PHP',
-        'ruby': 'Ruby',
-        'go': 'Go',
-        'rust': 'Rust',
-        'swift': 'Swift',
-        'kotlin': 'Kotlin',
+      // Nettoyer le message
+      let cleanMessage = firstMessage
+        .replace(/[📄🖼️!?]+/g, '')
+        .replace(/PDF:|Image:/gi, '')
+        .replace(/\([^)]*\)/g, '')
+        .toLowerCase()
+        .trim();
+
+      // Mots à ignorer (stop words)
+      const stopWords = ['aide', 'moi', 'avec', 'pour', 'dans', 'sur', 'une', 'le', 'la', 'les', 'des', 'un', 
+                         'qui', 'est', 'que', 'quoi', 'comment', 'pourquoi', 'quel', 'quelle', 'quels', 'quelles',
+                         'explique', 'présente', 'présent', 'parle', 'dis', 'raconte', 'donne', 'fais', 'fait',
+                         'peut', 'peux', 'veux', 'dois', 'suis', 'être', 'avoir', 'faire'];
+      
+      // Patterns de titres naturels avec leurs templates
+      const titlePatterns: { [key: string]: string } = {
+        // Traduction
+        'traduis.*plusieurs.*langues': 'Traduction Multilingue',
+        'traduis.*texte': 'Traduction',
+        'traduction': 'Traduction',
         
-        // Frameworks & Libraries
+        // Technos
+        'javascript|\\bjs\\b': 'JavaScript',
         'react': 'React',
-        'reactjs': 'React',
-        'vue': 'Vue.js',
-        'vuejs': 'Vue.js',
-        'angular': 'Angular',
-        'node': 'Node.js',
-        'nodejs': 'Node.js',
-        'express': 'Express.js',
-        'next': 'Next.js',
-        'nextjs': 'Next.js',
-        'nuxt': 'Nuxt.js',
-        'svelte': 'Svelte',
-        'django': 'Django',
-        'flask': 'Flask',
-        'laravel': 'Laravel',
-        
-        // Concepts
-        'api': 'API',
-        'apis': 'APIs',
-        'rest': 'REST',
-        'graphql': 'GraphQL',
-        'sql': 'SQL',
-        'nosql': 'NoSQL',
-        'db': 'base de données',
-        'bdd': 'base de données',
-        'ia': 'IA',
-        'ai': 'IA',
-        'ml': 'Machine Learning',
-        'dl': 'Deep Learning',
-        'css': 'CSS',
-        'html': 'HTML',
-        'json': 'JSON',
-        'xml': 'XML',
-        'git': 'Git',
-        'github': 'GitHub',
-        'docker': 'Docker',
-        'kubernetes': 'Kubernetes',
+        'python': 'Python',
+        'java(?!script)': 'Java',
         'aws': 'AWS',
         'azure': 'Azure',
-        'gcp': 'Google Cloud',
+        'docker': 'Docker',
+        'kubernetes|k8s': 'Kubernetes',
         
-        // Verbes courants à transformer
-        'explique': 'Explication',
-        'explique-moi': 'Explication',
-        'expliquer': 'Explication',
-        'aide': 'Aide avec',
-        'aide-moi': 'Aide avec',
-        'aider': 'Aide avec',
-        'apprendre': 'Apprentissage',
-        'apprends': 'Apprentissage',
-        'comprendre': 'Comprendre',
-        'c\'est quoi': 'Qu\'est-ce que',
-        'cest quoi': 'Qu\'est-ce que',
-        'qu\'est-ce': 'Qu\'est-ce que',
-        'quest-ce': 'Qu\'est-ce que'
+        // Concepts
+        'cloud.*computing': 'Cloud Computing',
+        'cloud': 'Cloud',
+        'api.*rest': 'API REST',
+        '\\bapi\\b': 'API',
+        'database|base.*données': 'Base de données',
+        '\\bsql\\b': 'SQL',
+        
+        // Actions courantes
+        'analyse|analyser': 'Analyse',
+        'créer|création': 'Création',
+        'développer|développement': 'Développement',
+        'optimiser|optimisation': 'Optimisation',
+        
+        // Spécifique MemoGenie
+        'genie.*mond|mond.*genie': 'Le Génie de Mond',
+        'memogenie': 'MemoGenie'
       };
-      
-      // Nettoyer le message des commandes d'images
-      let cleanMessage = firstMessage
-        .replace(/g[eé]n[eè]re[-\s]*(moi|nous)?\s*(une?)?\s*image\s*(de|du|d')?/gi, '')
-        .replace(/cr[eé][eé][-\s]*(moi|nous)?\s*(une?)?\s*image\s*(de|du|d')?/gi, '')
-        .replace(/fais[-\s]*(moi|nous)?\s*(une?)?\s*image\s*(de|du|d')?/gi, '')
-        .replace(/dessine[-\s]*(moi|nous)?\s*/gi, '')
-        .trim();
-      
-      // Si c'est une demande d'image, utiliser le sujet de l'image
-      if (cleanMessage !== firstMessage && cleanMessage.length > 0) {
-        firstMessage = cleanMessage;
-      }
-      
-      // Générer un titre intelligent
-      let newTitle = firstMessage.slice(0, 60).trim();
-      
-      // Appliquer les expansions (insensible à la casse)
-      Object.entries(expansions).forEach(([pattern, replacement]) => {
-        const regex = new RegExp(`\\b${pattern}\\b`, 'gi');
-        newTitle = newTitle.replace(regex, replacement);
-      });
-      
-      // Capitaliser la première lettre
-      newTitle = newTitle.charAt(0).toUpperCase() + newTitle.slice(1);
-      
-      // Nettoyer les espaces multiples
-      newTitle = newTitle.replace(/\s+/g, ' ');
-      
-      // Si le message original est trop long, couper intelligemment
-      if (firstMessage.length > 60) {
-        const lastSpace = newTitle.lastIndexOf(' ');
-        if (lastSpace > 20) { // Au moins 20 caractères
-          newTitle = newTitle.slice(0, lastSpace) + '...';
-        } else if (newTitle.length > 20) {
-          newTitle = newTitle + '...';
+
+      // Détecter les patterns
+      let detectedTitle = '';
+      for (const [pattern, title] of Object.entries(titlePatterns)) {
+        const regex = new RegExp(pattern, 'i');
+        if (regex.test(cleanMessage)) {
+          detectedTitle = title;
+          break;
         }
       }
+
+      // Si pattern détecté, utiliser directement
+      if (detectedTitle) {
+        await updateProjectName(projectId, detectedTitle);
+        console.log('✅ Projet renommé:', detectedTitle);
+        return;
+      }
+
+      // Sinon, extraire intelligemment les mots-clés
+      const words = cleanMessage
+        .split(/\s+/)
+        .filter(word => 
+          word.length > 3 && 
+          !stopWords.includes(word) &&
+          /^[a-zàâäçéèêëîïôùûü0-9]+$/i.test(word)
+        );
+
+      // Prendre 2 mots max pour un titre court
+      let titleWords = words.slice(0, 2);
       
-      // Si le titre est vide ou trop court, utiliser un titre par défaut
+      // Si pas assez de mots, prendre le début du message
+      if (titleWords.length === 0) {
+        const allWords = cleanMessage.split(/\s+/).slice(0, 3);
+        titleWords = allWords.filter(w => w.length > 2 && !stopWords.includes(w));
+      }
+
+      // Créer un titre naturel
+      let newTitle = '';
+      if (titleWords.length >= 2) {
+        // Essayer de former un titre naturel
+        const word1 = titleWords[0].charAt(0).toUpperCase() + titleWords[0].slice(1);
+        const word2 = titleWords[1].charAt(0).toUpperCase() + titleWords[1].slice(1);
+        
+        // Déterminer si on met "de", "du", ou juste espace
+        if (['texte', 'image', 'document', 'fichier', 'code'].includes(titleWords[0])) {
+          newTitle = `${word1} ${word2}`;
+        } else {
+          newTitle = `${word1} ${word2}`;
+        }
+      } else if (titleWords.length === 1) {
+        newTitle = titleWords[0].charAt(0).toUpperCase() + titleWords[0].slice(1);
+      }
+
+      // Limiter à 35 caractères
+      if (newTitle.length > 35) {
+        const lastSpace = newTitle.slice(0, 32).lastIndexOf(' ');
+        newTitle = newTitle.slice(0, lastSpace > 10 ? lastSpace : 32) + '...';
+      }
+      
+      // Fallback final
       if (!newTitle || newTitle.length < 3) {
-        newTitle = 'Nouvelle conversation';
+        newTitle = firstMessage.slice(0, 35).trim() || 'Nouvelle conversation';
       }
       
-      // Limiter à 70 caractères max
-      if (newTitle.length > 70) {
-        const lastSpace = newTitle.slice(0, 67).lastIndexOf(' ');
-        newTitle = (lastSpace > 20 ? newTitle.slice(0, lastSpace) : newTitle.slice(0, 67)) + '...';
-      }
-      
-      // Mettre à jour le projet avec le nouveau titre
       await updateProjectName(projectId, newTitle);
-      
-      console.log('✅ Projet renommé automatiquement:', newTitle);
+      console.log('✅ Projet renommé:', newTitle);
     } catch (error) {
-      console.error('❌ Erreur renommage automatique:', error);
-      // Ne pas afficher d'erreur à l'utilisateur, c'est juste un nice-to-have
+      console.error('❌ Erreur renommage:', error);
     }
   };
 
