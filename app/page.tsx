@@ -562,8 +562,14 @@ export default function Home() {
       
       console.log(`📊 Hauteur: ${currentHeight}px / Max: ${maxAllowedHeight.toFixed(0)}px (Page ${currentPageCount})`);
       
-      // Si le contenu dépasse le seuil
-      if (currentHeight > maxAllowedHeight) {
+      // Calculer longueur de texte et nombre de paragraphes pour éviter les faux positifs
+      const totalTextLength = (editorRef.current.innerText || '').trim().length;
+      const paragraphCount = editorRef.current.querySelectorAll('p').length;
+      const PAGE_TRIGGER_CHAR_THRESHOLD = 1500; // Ne pas créer de page si moins de caractères
+      const PAGE_TRIGGER_PARAGRAPHS = 10; // ou moins de paragraphes
+
+      // Si le contenu dépasse le seuil ET qu'on a suffisamment de texte/paragraphes
+      if (currentHeight > maxAllowedHeight && (totalTextLength > PAGE_TRIGGER_CHAR_THRESHOLD || paragraphCount >= PAGE_TRIGGER_PARAGRAPHS)) {
         console.log(`🔥 DÉPASSEMENT ! Création page ${currentPageCount + 1}`);
         
         // Vérifier que le dernier élément n'est pas déjà un page-break
@@ -906,6 +912,15 @@ export default function Home() {
       };
       
       setMessages(prev => [...prev, aiMessage]);
+      // Si on est dans un éditeur AI (ai-editor), insérer directement la réponse dans la feuille
+      if (selectedProjectRef.current?.project_type === 'ai-editor') {
+        try {
+          autoInsertAssistantIntoEditor(fullContent);
+          console.log('✅ Réponse IA insérée dans la feuille (ai-editor)');
+        } catch (e) {
+          console.error('Erreur auto-insert editor:', e);
+        }
+      }
       console.log('📝 Message IA ajouté');
       
       // Sauvegarder les messages
@@ -3316,18 +3331,168 @@ L'utilisateur veut que tu analyses ce document. Réponds directement à sa quest
   // Fonction pour nettoyer et formater le texte pour PDF
   const cleanTextForPDF = (text: string): string => {
     return text
-      // Enlever les emojis et caractères Unicode spéciaux
-      .replace(/[\u{1F300}-\u{1F9FF}]/gu, '') // Emojis
-      .replace(/[\u{2600}-\u{26FF}]/gu, '') // Symboles divers
-      .replace(/[\u{2700}-\u{27BF}]/gu, '') // Dingbats
-      .replace(/[\u{FE00}-\u{FE0F}]/gu, '') // Variation selectors
-      .replace(/[\u{1F900}-\u{1F9FF}]/gu, '') // Emojis supplémentaires
-      .replace(/[\u{1F1E0}-\u{1F1FF}]/gu, '') // Drapeaux
-      // Nettoyer les symboles spéciaux problématiques
-      .replace(/[^\x20-\x7E\xA0-\xFF\u0100-\u017F\u0180-\u024F]/g, '')
-      // Normaliser les espaces
+      // Normaliser les espaces (laisser les caractères Unicode intacts)
       .replace(/\s+/g, ' ')
       .trim();
+  };
+
+  // Détecter la langue principale du texte (heuristique simple)
+  const detectLanguage = (text: string): 'ar' | 'he' | 'fa' | 'en' | 'fr' | 'other' => {
+    if (!text) return 'other';
+    if (/[ -]*[\u0600-\u06FF\u0750-\u077F\u08A0-\u08FF]/.test(text)) return 'ar';
+    if (/[\u0590-\u05FF]/.test(text)) return 'he';
+    if (/[àâäéèêëïîôùûüÿœæ]/i.test(text)) return 'fr';
+    if (/[\u4E00-\u9FFF]/.test(text)) return 'other';
+    return 'en';
+  };
+
+  // Export PDF improved: if RTL detected, prefer HTML printable approach preserving fonts and direction
+  const exportEditorContentImproved = async (format: 'pdf' | 'docx' | 'html' | 'txt') => {
+    const content = editorRef.current?.innerHTML || '';
+    const textContent = editorRef.current?.innerText || '';
+
+    const lang = detectLanguage(textContent);
+    const isRTL = lang === 'ar' || lang === 'he' || lang === 'fa';
+
+    if (format === 'pdf' && isRTL) {
+      // Try an image-based PDF export that rasterizes the editor DOM to preserve Arabic shaping
+      // We dynamically import html2canvas to avoid forcing install at runtime; if missing, fall back to HTML export
+      try {
+        const html2canvas = (await import('html2canvas')).default;
+
+        if (!editorRef.current) throw new Error('Editor not available');
+
+  // Clone editor into a temporary container for clean rendering
+        const temp = editorRef.current.cloneNode(true) as HTMLElement;
+        // Remove page-break markers and UI elements that shouldn't appear in PDF
+        temp.querySelectorAll('.page-break, .toolbar, .hidden').forEach(el => el.remove());
+
+  // PDF sizing constants (we need them before setting temp width)
+  const pageWidthMM = 210;
+  const pageHeightMM = 297;
+  const marginMM = 10; // 10mm margins
+  const usableWidthMM = pageWidthMM - 2 * marginMM;
+  const usableHeightMM = pageHeightMM - 2 * marginMM;
+
+  // Render the inner content at usable width so we can apply margins in the PDF later
+  temp.style.width = `${usableWidthMM}mm`; // render inner content width in mm
+  temp.style.background = '#ffffff';
+  // Add inner padding matching the PDF margins so the exported pages have consistent gutters
+  temp.style.padding = `${marginMM}mm`;
+
+        // Create a wrapper that injects print-friendly CSS to hide editor visual markers
+        const wrapper = document.createElement('div');
+        wrapper.style.position = 'fixed';
+        wrapper.style.left = '-9999px';
+        wrapper.style.top = '0';
+        wrapper.style.background = '#ffffff';
+
+        // Inject CSS overrides to remove dashed borders, page-break labels and pseudo-elements
+        const style = document.createElement('style');
+        style.innerHTML = `
+          div[contenteditable] .page-break, div[contenteditable] .page-break + *, div[contenteditable]::after, .page-break {
+            display: none !important;
+            border-top: none !important;
+            box-shadow: none !important;
+          }
+          /* ensure no dashed separators remain */
+          div[contenteditable] * { border-top: none !important; }
+        `;
+
+        wrapper.appendChild(style);
+        wrapper.appendChild(temp);
+        document.body.appendChild(wrapper);
+
+        // Rasterize with html2canvas (higher scale for quality)
+        const canvas = await html2canvas(wrapper, { scale: 2, useCORS: true, backgroundColor: '#ffffff' });
+
+        // Remove temp wrapper
+        document.body.removeChild(wrapper);
+
+        const imgData = canvas.toDataURL('image/jpeg', 0.95);
+
+  // Create PDF pages sized A4 in mm
+  const pdf = new jsPDF({ unit: 'mm', format: 'a4' });
+
+    // Compute px per mm on the canvas (keep as float). Use consistent rounding
+    // when converting mm -> px to avoid cumulative off-by-one gaps.
+    const pxPerMm = canvas.width / usableWidthMM;
+    const pagePxHeight = Math.round(usableHeightMM * pxPerMm);
+  const overlapMm = 18; // overlap in mm to avoid cutting lines (increase if lines still cut)
+  const overlapPx = Math.round(overlapMm * pxPerMm);
+
+        // Determine total image height in mm
+        const totalImgHeightMM = canvas.height / pxPerMm;
+
+        if (totalImgHeightMM <= usableHeightMM) {
+          // fits on one page
+          pdf.addImage(imgData, 'JPEG', marginMM, marginMM, usableWidthMM, totalImgHeightMM);
+        } else {
+          let y = 0;
+          let pageIndex = 0;
+          while (y < canvas.height) {
+            const remaining = canvas.height - y;
+            // Each slice should contain one page worth of pixels plus an overlap at the
+            // end (except possibly the last slice). Use the rounded values above so
+            // boundaries align on pixel boundaries and avoid tiny gaps.
+            const want = pagePxHeight + (remaining > pagePxHeight ? overlapPx : 0);
+            const sliceHeight = Math.min(want, remaining);
+            const sliceCanvas = document.createElement('canvas');
+            sliceCanvas.width = canvas.width;
+            sliceCanvas.height = sliceHeight;
+            const ctx = sliceCanvas.getContext('2d')!;
+            ctx.drawImage(canvas, 0, y, canvas.width, sliceHeight, 0, 0, canvas.width, sliceHeight);
+            const sliceData = sliceCanvas.toDataURL('image/jpeg', 0.95);
+
+            if (pageIndex > 0) pdf.addPage();
+
+            // height in mm for this slice
+            const sliceHeightMM = sliceHeight / pxPerMm;
+            pdf.addImage(sliceData, 'JPEG', marginMM, marginMM, usableWidthMM, sliceHeightMM);
+
+            // Advance the read window by exactly one page height so the next slice
+            // starts inside the overlap region of the current slice. Using the
+            // rounded pagePxHeight and overlapPx above ensures we don't accumulate
+            // fractional pixels which previously caused tiny gaps.
+            y += pagePxHeight;
+            pageIndex++;
+          }
+        }
+
+        const filename = `document-${Date.now()}.pdf`;
+        pdf.save(filename);
+        showToast('success', '✅ PDF (image-based) exporté — texte arabe rendu correctement');
+        return;
+      } catch (err) {
+        console.warn('html2canvas import/usage failed, falling back to printable HTML', err);
+        // Fallback to HTML printable
+        const html = `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><style>body{font-family:system-ui, -apple-system, 'Segoe UI', Roboto, Arial; padding:20px;}[dir=rtl]{direction:rtl;text-align:right}</style></head><body dir="rtl"><div>${content}</div></body></html>`;
+        const blob = new Blob([html], { type: 'text/html;charset=utf-8' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `document-${Date.now()}.html`;
+        a.click();
+        URL.revokeObjectURL(url);
+        showToast('info', 'Export HTML créé en fallback — imprimez en PDF depuis le navigateur');
+        return;
+      }
+    }
+
+    // Fallback to existing exporter
+    exportEditorContent(format);
+  };
+
+  // Auto-insert assistant responses into the editor when in ai-editor mode
+  const autoInsertAssistantIntoEditor = (assistantText: string) => {
+    if (!editorRef.current) return;
+    // Insérer à la fin du document
+    const paragraph = document.createElement('p');
+    paragraph.innerText = assistantText;
+    editorRef.current.appendChild(paragraph);
+    // Scroll and focus
+    const scrollContainer = editorRef.current.parentElement;
+    if (scrollContainer) scrollContainer.scrollTop = scrollContainer.scrollHeight;
   };
 
   // Fonction pour formater le texte avec structure (titres, listes, paragraphes)
@@ -4305,6 +4470,15 @@ L'utilisateur veut que tu analyses ce document. Réponds directement à sa quest
       }
 
       setMessages([...messages, userMessage, { role: 'assistant', content: fullContent }]);
+      // Insérer automatiquement la réponse dans l'éditeur si on est dans le mode ai-editor
+      if (selectedProject?.project_type === 'ai-editor') {
+        try {
+          autoInsertAssistantIntoEditor(fullContent);
+          console.log('✅ Réponse IA insérée dans la feuille (ai-editor)');
+        } catch (e) {
+          console.error('Erreur auto-insert editor:', e);
+        }
+      }
       setStreamingContent('');
       
       // ✨ RENOMMAGE AUTOMATIQUE DU PROJET
@@ -5145,7 +5319,7 @@ L'utilisateur veut que tu analyses ce document. Réponds directement à sa quest
                       <div className="absolute right-0 top-full mt-2 opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-200 z-20">
                         <div className="bg-slate-800 border border-white/20 rounded-lg shadow-xl overflow-hidden min-w-[160px]">
                           <button
-                            onClick={() => exportEditorContent('pdf')}
+                            onClick={() => exportEditorContentImproved('pdf')}
                             className="w-full px-4 py-2.5 flex items-center gap-3 text-white hover:bg-white/10 transition-colors text-left"
                           >
                             <FileText className="w-4 h-4 text-red-400" />
