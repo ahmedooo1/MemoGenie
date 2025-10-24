@@ -4893,7 +4893,7 @@ L'utilisateur veut que tu analyses ce document. Réponds directement à sa quest
               </button>
             )}
             
-            {/* Bouton Appel Vocal */}
+            {/* Bouton Appel Vocal
             <button
               onClick={() => {
                 if (!selectedProject) {
@@ -4927,9 +4927,9 @@ L'utilisateur veut que tu analyses ce document. Réponds directement à sa quest
                 ) : (
                   <Phone className="w-5 h-5" />
                 )}
-              </button>
+              </button> */}
             
-            {messages.length > 0 && speechSynthesis && (
+            {/* {messages.length > 0 && speechSynthesis && (
               <button
                 ref={speechSettingsRef}
                 data-speech-settings-btn
@@ -4946,7 +4946,7 @@ L'utilisateur veut que tu analyses ce document. Réponds directement à sa quest
               >
                 <Settings className="w-5 h-5" />
               </button>
-            )}
+            )} */}
                 {messages.length > 0 && (
                   <button
                     onClick={clearConversation}
@@ -4956,7 +4956,7 @@ L'utilisateur veut que tu analyses ce document. Réponds directement à sa quest
                     <Eraser className="w-5 h-5 text-gray-400 group-hover:text-red-400" />
                   </button>
                 )}
-                <button 
+                {/* <button 
                   onClick={exportToPDF}
                   disabled={!selectedProject || (chapters.length === 0 && messages.length === 0)}
                   className="p-2 hover:bg-white/10 rounded-lg transition-colors disabled:opacity-30"
@@ -4971,7 +4971,7 @@ L'utilisateur veut que tu analyses ce document. Réponds directement à sa quest
                   title="Exporter en Word"
                 >
                   <Download className="w-4 h-4 md:w-5 md:h-5 text-white" />
-                </button>
+                </button> */}
               </>
             )}
           </div>
