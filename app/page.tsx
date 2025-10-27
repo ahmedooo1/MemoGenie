@@ -8,10 +8,13 @@ import { motion, AnimatePresence } from 'framer-motion';
 import ReactMarkdown from 'react-markdown';
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
 import { vscDarkPlus } from 'react-syntax-highlighter/dist/esm/styles/prism';
+
 import { jsPDF } from 'jspdf';
 import { Document, Packer, Paragraph, TextRun, HeadingLevel, ImageRun } from 'docx';
 import { getUserId } from '@/lib/user';
+
 import {
+  Link as LinkIcon,
   BookOpen,
   Plus,
   Send,
@@ -72,6 +75,12 @@ import {
   Table,
   Heading1,
   Heading2,
+  Heading3,
+  Type,
+  Highlighter,
+  MoreHorizontal,
+  Undo,
+  Redo,
 } from 'lucide-react';
 
 type ProjectType = 'memoir' | 'chatbot' | 'image-studio' | 'creative-writing' | 'social-media' | 'professional-docs' | 'emails' | 'translation' | 'prompt-generator' | 'text-minify' | 'word-counter' | 'ai-editor';
@@ -5229,7 +5238,7 @@ L'utilisateur veut que tu analyses ce document. Réponds directement à sa quest
                       className="p-2 hover:bg-gray-100 rounded transition-colors"
                       title="Insérer un lien"
                     >
-                      <Link className="w-4 h-4 text-gray-700" />
+                      <LinkIcon className="w-4 h-4 text-gray-700" />
                     </button>
                   </div>
 
