@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getUserId } from '@/lib/user';
-import { generateText } from '@/lib/gemini';
+import { generateContent } from '@/lib/gemini';
 
 export async function POST(request: NextRequest) {
   try {
@@ -36,7 +36,8 @@ export async function POST(request: NextRequest) {
         return NextResponse.json({ error: 'Action non reconnue' }, { status: 400 });
     }
 
-    const result = await generateText(prompt);
+  // Utilise generateContent pour générer le texte
+  const result = await generateContent(0, prompt); // Remplace 0 par l'ID du projet si disponible
     
     return NextResponse.json({ 
       success: true, 
