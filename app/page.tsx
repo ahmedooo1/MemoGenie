@@ -1,4 +1,6 @@
+
 'use client';
+import Link from 'next/link';
 
 import { useState, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
@@ -67,16 +69,9 @@ import {
   ListOrdered,
   Quote,
   Code,
-  Link,
   Table,
   Heading1,
   Heading2,
-  Heading3,
-  Type,
-  Highlighter,
-  MoreHorizontal,
-  Undo,
-  Redo,
 } from 'lucide-react';
 
 type ProjectType = 'memoir' | 'chatbot' | 'image-studio' | 'creative-writing' | 'social-media' | 'professional-docs' | 'emails' | 'translation' | 'prompt-generator' | 'text-minify' | 'word-counter' | 'ai-editor';
@@ -4630,7 +4625,7 @@ L'utilisateur veut que tu analyses ce document. Réponds directement à sa quest
   };
 
   return (
-    <div className="flex h-screen overflow-hidden bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900" style={{ paddingBottom: '40px' }}>
+    <div className="flex h-screen overflow-hidden bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900" >
       {/* Sidebar - Projets et Chapitres */}
       <motion.div 
         initial={false}
@@ -4644,10 +4639,12 @@ L'utilisateur veut que tu analyses ce document. Réponds directement à sa quest
       >
         <div className="p-6 border-b border-white/10">
           <div className="flex items-center gap-3 mb-6">
-            <div className="p-2 bg-gradient-to-br from-purple-500 to-pink-500 rounded-lg">
-              <span className="text-2xl">🤖</span>
-            </div>
-            <h1 className="text-2xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-purple-400 to-pink-400">MemoGenie</h1>
+            <Link href="/" className="flex items-center gap-3 group">
+              <div className="p-2 bg-gradient-to-br from-purple-500 to-pink-500 rounded-lg group-hover:scale-105 transition-transform">
+                <span className="text-2xl">🤖</span>
+              </div>
+              <h1 className="text-2xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-purple-400 to-pink-400 group-hover:text-purple-300 transition-colors">MemoGenie</h1>
+            </Link>
           </div>
           
           <button
@@ -5058,9 +5055,11 @@ L'utilisateur veut que tu analyses ce document. Réponds directement à sa quest
             <div className="flex items-center justify-center h-full">
               <div className="text-center">
                 <Sparkles className="w-16 h-16 text-purple-500 mx-auto mb-4 animate-float" />
-                <h2 className="text-2xl font-bold text-white mb-2">
-                  MemoGenie
-                </h2>
+                <Link href="/">
+                  <h2 className="text-2xl font-bold text-white mb-2 hover:text-purple-300 transition-colors">
+                    MemoGenie
+                  </h2>
+                </Link>
                 <p className="text-gray-400">
                   Créez un projet pour commencer ou discutez directement avec l'IA
                 </p>
@@ -5734,17 +5733,16 @@ L'utilisateur veut que tu analyses ce document. Réponds directement à sa quest
                       animate={{ opacity: 1, y: 0 }}
                       className="space-y-8"
                     >
-                      {/* Header avec icône et titre */}
-                      <div className="text-center space-y-4">
-                        <div className={`inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-gradient-to-br ${projectTypeInfo.gradient}`}>
+                      {/* Header avec icône et titre - Responsive */}
+                      <div className="flex flex-col md:flex-row items-center justify-center md:justify-start space-y-4 md:space-y-0 md:space-x-6 text-center md:text-left mb-6">
+                        <div className={`inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-gradient-to-br ${projectTypeInfo.gradient}`}> 
                           <Icon className="w-8 h-8 text-white" />
                         </div>
-                        
                         <div>
-                          <h2 className="text-3xl md:text-4xl font-bold text-white mb-2">
+                          <h2 className="text-2xl md:text-4xl font-bold text-white mb-2">
                             {projectTypeInfo.name}
                           </h2>
-                          <p className="text-gray-400 text-lg">
+                          <p className="text-gray-400 text-base md:text-lg">
                             {projectTypeInfo.description}
                           </p>
                         </div>
@@ -6479,36 +6477,7 @@ L'utilisateur veut que tu analyses ce document. Réponds directement à sa quest
         )}
       </AnimatePresence>
 
-      {/* Footer */}
-      <footer className="fixed bottom-0 left-0 right-0 bg-slate-900/90 backdrop-blur-sm border-t border-white/10 py-2 px-3 md:py-3 md:px-6 z-40">
-        <div className="max-w-7xl mx-auto flex items-center justify-between gap-2">
-          <div className="flex items-center gap-2 text-xs md:text-sm text-gray-400">
-            <span className="font-semibold text-transparent bg-clip-text bg-gradient-to-r from-purple-400 to-pink-400">
-              MemoGenie 🤖
-            </span>
-            <span className="hidden md:inline">•</span>
-            <span className="hidden md:inline">© 2025</span>
-          </div>
-          
-          <div className="flex items-center gap-2 md:gap-4">
-            <span className="text-xs md:text-sm text-gray-400 hidden sm:inline">
-              Par <span className="text-purple-400 font-semibold">Ahmad Ahmad</span>
-            </span>
-            <a
-              href="https://github.com/ahmedooo1?tab=repositories"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="flex items-center gap-1 md:gap-2 px-2 py-1 md:px-3 md:py-1.5 bg-white/5 hover:bg-white/10 rounded-lg transition-colors group"
-              title="Voir mes projets GitHub"
-            >
-              <svg className="w-4 h-4 md:w-5 md:h-5 text-gray-400 group-hover:text-white transition-colors" fill="currentColor" viewBox="0 0 24 24">
-                <path fillRule="evenodd" d="M12 2C6.477 2 2 6.484 2 12.017c0 4.425 2.865 8.18 6.839 9.504.5.092.682-.217.682-.483 0-.237-.008-.868-.013-1.703-2.782.605-3.369-1.343-3.369-1.343-.454-1.158-1.11-1.466-1.11-1.466-.908-.62.069-.608.069-.608 1.003.07 1.531 1.032 1.531 1.032.892 1.53 2.341 1.088 2.91.832.092-.647.35-1.088.636-1.338-2.22-.253-4.555-1.113-4.555-4.951 0-1.093.39-1.988 1.029-2.688-.103-.253-.446-1.272.098-2.65 0 0 .84-.27 2.75 1.026A9.564 9.564 0 0112 6.844c.85.004 1.705.115 2.504.337 1.909-1.296 2.747-1.027 2.747-1.027.546 1.379.202 2.398.1 2.651.64.7 1.028 1.595 1.028 2.688 0 3.848-2.339 4.695-4.566 4.943.359.309.678.92.678 1.855 0 1.338-.012 2.419-.012 2.747 0 .268.18.58.688.482A10.019 10.019 0 0022 12.017C22 6.484 17.522 2 12 2z" clipRule="evenodd" />
-              </svg>
-              <span className="text-xs md:text-sm text-gray-400 group-hover:text-white transition-colors hidden md:inline">GitHub</span>
-            </a>
-          </div>
-        </div>
-      </footer>
+
 
       {/* Confirmation Dialog Modal */}
       <AnimatePresence>
