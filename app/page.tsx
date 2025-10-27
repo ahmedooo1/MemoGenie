@@ -4093,7 +4093,7 @@ L'utilisateur veut que tu analyses ce document. Réponds directement à sa quest
           return `📄 **${f.name}** (${sizeKb} KB)`;
         }).join('\n');
       } else {
-        finalMessage = `${inputMessage}${filesContent}`;
+        finalMessageAI = `${inputMessage}${filesContentForAI}`;
       }
     }
 
