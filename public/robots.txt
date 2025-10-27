@@ -1,0 +1,5 @@
+User-agent: *
+Allow: /
+
+Sitemap: https://memogenie.aaweb.fr/sitemap.xml
+Host: https://memogenie.aaweb.fr
