@@ -784,8 +784,10 @@ export async function* streamGenerate(
       history,
     });
     
-    // Sauvegarder le message utilisateur avec images
-    addConversation(projectId, 'user', userMessage, chapterId, images);
+  // NOTE: The caller (API route) is responsible for saving the user-facing
+  // message to the DB. We no longer save the raw `userMessage` here because
+  // it may contain large or sensitive payloads (PDF full text). The assistant
+  // response is still saved below.
     
     // Construire le message enrichi avec le contexte système adapté au type de projet
     const systemPrompt = `${getSystemPrompt(projectContext, projectType)}\n\n=== REQUÊTE UTILISATEUR ===\n${userMessage}`;

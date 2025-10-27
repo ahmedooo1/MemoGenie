@@ -1,10 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { GoogleGenerativeAI } from '@google/generative-ai';
 
-const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || '');
-
 export async function POST(request: NextRequest) {
   try {
+    const apiKey = process.env.GEMINI_API_KEY || '';
+    if (!apiKey) {
+      console.error('❌ GEMINI_API_KEY not set');
+      return NextResponse.json({ error: 'GEMINI_API_KEY not configured on the server. Please set GEMINI_API_KEY in your environment.' }, { status: 500 });
+    }
+
+    const genAI = new GoogleGenerativeAI(apiKey);
     const formData = await request.formData();
     const audioFile = formData.get('audio') as File;
     
@@ -19,7 +24,7 @@ export async function POST(request: NextRequest) {
     const buffer = Buffer.from(arrayBuffer);
     const base64Audio = buffer.toString('base64');
 
-    // Essayer différents modèles Gemini qui supportent l'audio
+  // Essayer différents modèles Gemini qui supportent l'audio
     let transcription = '';
     
     // Liste des modèles à essayer dans l'ordre

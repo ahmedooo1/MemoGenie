@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { streamGenerate } from '@/lib/gemini';
-import { getRecentConversations } from '@/lib/database';
+import { getRecentConversations, addConversation } from '@/lib/database';
 
 export const runtime = 'nodejs';
 
@@ -33,13 +33,43 @@ export async function GET(req: NextRequest) {
 
 export async function POST(req: NextRequest) {
   try {
-    const { projectId, message, chapterId, images } = await req.json();
+    // Accept an optional `persistedMessage` which will be saved to the DB.
+    // `message` is used for the AI/generation and may contain large/attached
+    // content (PDF full text). We persist only the user-visible `persistedMessage`.
+  const { projectId, message, persistedMessage, chapterId, images, userQuestion } = await req.json();
 
     if (!projectId || !message) {
       return NextResponse.json(
         { error: 'projectId et message sont requis' },
         { status: 400 }
       );
+    }
+
+    // Save a safe user-facing message (persistedMessage) instead of the raw
+    // AI-facing `message` when available. This prevents large or sensitive
+    // content (eg. full extracted PDF text) from being stored in the
+    // conversations table.
+    if (projectId) {
+      const toSave = persistedMessage || message;
+      try {
+        // If we have both a concise persisted card and a user question, persist
+        // them together in a single conversation row so they render as one
+        // message bubble after refresh.
+        const cleanQuestion = userQuestion ? String(userQuestion).trim() : '';
+
+        if (toSave && cleanQuestion && cleanQuestion !== String(toSave).trim()) {
+          const combined = `${String(toSave).trim()}\n\n${cleanQuestion}`;
+          addConversation(Number(projectId), 'user', combined, chapterId ? Number(chapterId) : undefined, images || []);
+        } else if (toSave) {
+          // Only the concise card (no separate question)
+          addConversation(Number(projectId), 'user', String(toSave).trim(), chapterId ? Number(chapterId) : undefined, images || []);
+        } else if (cleanQuestion) {
+          // No persisted card, but we have a question -> save the question
+          addConversation(Number(projectId), 'user', cleanQuestion, chapterId ? Number(chapterId) : undefined, []);
+        }
+      } catch (e) {
+        console.error('Erreur sauvegarde message utilisateur (chat route):', e);
+      }
     }
 
     // Créer un ReadableStream pour le streaming

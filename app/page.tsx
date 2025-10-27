@@ -40,30 +40,18 @@ import {
   File,
   Palette,
   Pen,
-  MessageSquare,
-  Briefcase,
-  Mail,
-  Globe,
-  Target,
-  AlertCircle,
-  Info,
-  Menu,
   PanelLeftClose,
   PanelLeft,
-  Minimize2,
-  Calculator,
-  Volume2,
-  VolumeX,
-  Pause,
-  Phone,
-  PhoneOff,
-  Mic,
-  MicOff,
-  Radio,
+  Undo,
+  Redo,
   Bold,
   Italic,
   Underline,
   Strikethrough,
+  Heading1,
+  Heading2,
+  Heading3,
+  Type,
   AlignLeft,
   AlignCenter,
   AlignRight,
@@ -73,16 +61,22 @@ import {
   Quote,
   Code,
   Table,
-  Heading1,
-  Heading2,
-  Heading3,
-  Type,
   Highlighter,
+  Minimize2,
   MoreHorizontal,
-  Undo,
-  Redo,
+  Briefcase,
+  MessageSquare,
+  Globe,
+  VolumeX,
+  Volume2,
+  Target,
+  Mic,
+  MicOff,
+  Radio,
+  PhoneOff,
+  AlertCircle,
+  Info
 } from 'lucide-react';
-
 type ProjectType = 'memoir' | 'chatbot' | 'image-studio' | 'creative-writing' | 'social-media' | 'professional-docs' | 'emails' | 'translation' | 'prompt-generator' | 'text-minify' | 'word-counter' | 'ai-editor';
 
 interface ProjectTypeInfo {
@@ -437,7 +431,6 @@ export default function Home() {
       }
     } else {
       setChapters([]);
-      setMessages([]);
     }
   }, [selectedProject]);
 
@@ -657,7 +650,7 @@ export default function Home() {
   // Fonction pour afficher un toast
   const showToast = (type: 'success' | 'error' | 'info' | 'warning', message: string) => {
     const id = Date.now();
-    setToasts(prev => [...prev, { id, type, message }]);
+    // setToasts(prev => [...prev, { id, type, message }]);
     
     // Auto-suppression après 4 secondes
     setTimeout(() => {
@@ -846,7 +839,6 @@ export default function Home() {
       images: []
     };
     
-    setMessages(prev => [...prev, userMessage]);
     console.log('📝 Message utilisateur ajouté');
     
     try {
@@ -915,7 +907,6 @@ export default function Home() {
         images: []
       };
       
-      setMessages(prev => [...prev, aiMessage]);
       // Si on est dans un éditeur AI (ai-editor), insérer directement la réponse dans la feuille
       if (selectedProjectRef.current?.project_type === 'ai-editor') {
         try {
@@ -971,8 +962,8 @@ export default function Home() {
         console.log('🔍 Voix arabe locale disponible:', hasLocalArabicVoice);
       }
       
-      // Si c'est de l'arabe SANS voix locale, ne pas essayer de lire
-      const shouldSkipSpeech = isArabic && !hasLocalArabicVoice;
+      // Ne pas essayer de lire seulement si pas de voix locale (sauf pour l'arabe, toujours essayer)
+      const shouldSkipSpeech = !isArabic && !hasLocalArabicVoice;
       
       console.log('🔍 Vérification conditions speech:', {
         hasSpeechSynthesis,
@@ -1421,25 +1412,44 @@ export default function Home() {
           method: 'POST',
           body: formData
         });
-        
+
+        if (!response.ok) {
+          // Try to parse JSON error body, otherwise use statusText
+          let errBody: any = { error: response.statusText };
+          try {
+            errBody = await response.json();
+          } catch (e) {
+            // ignore parse error
+          }
+          console.error('❌ Transcription serveur a échoué:', response.status, errBody);
+          setIsTranscribing(false);
+          showToast('error', `Transcription échouée: ${errBody?.error || response.statusText}`);
+          return;
+        }
+
         const result = await response.json();
-        
+
         if (result.success && result.transcription) {
           console.log('✅ Transcription reçue:', result.transcription);
           setIsTranscribing(false);
-          
+
           // Mettre le texte transcrit dans l'input
           setInputMessage(result.transcription);
           showToast('success', '✅ Transcription ajoutée');
         } else {
           console.error('❌ Erreur transcription:', result.error);
           setIsTranscribing(false);
-          showToast('error', 'Erreur de transcription');
+          showToast('error', `Erreur de transcription: ${result.error || 'Erreur inconnue'}`);
         }
-      } catch (error) {
+      } catch (error: any) {
         console.error('❌ Erreur envoi audio:', error);
         setIsTranscribing(false);
-        showToast('error', 'Erreur d\'envoi audio');
+        // Distinguish connection errors from other errors
+        if (error instanceof TypeError && /failed to fetch/i.test(String(error.message))) {
+          showToast('error', 'Impossible de contacter le serveur de transcription (connexion refusée)');
+        } else {
+          showToast('error', `Erreur d'envoi audio: ${error?.message || 'inconnue'}`);
+        }
       }
     }
   };
@@ -4048,23 +4058,40 @@ L'utilisateur veut que tu analyses ce document. Réponds directement à sa quest
   const sendMessage = async () => {
     if ((!inputMessage.trim() && uploadedImages.length === 0 && uploadedFiles.length === 0) || !selectedProject || isGenerating) return;
 
-    // Préparer le message avec le contenu des fichiers
-    let finalMessage = inputMessage;
-    
+    // Préparer le message qui sera envoyé à l'IA (peut contenir le texte complet
+    // des PDFs) et préparer une version courte / sûre qui sera affichée et
+    // persistée dans la BDD (userDisplayMessage).
+    let finalMessageAI = inputMessage;
+    let userDisplayMessage = inputMessage;
+
     if (uploadedFiles.length > 0) {
-      const filesContent = uploadedFiles.map(file => {
+      const filesContentForAI = uploadedFiles.map(file => {
         if (file.type === 'pdf') {
-          return `\n\n📄 **${file.content}**\n\n**Question de l'utilisateur concernant ce document:** ${inputMessage}`;
+          // full PDF text is only included in the AI-facing payload
+          return `\n\n📄 **${file.name}**\n\n**CONTENU COMPLET (pour l'IA):**\n${file.content}\n\n**Question de l'utilisateur concernant ce document:** ${inputMessage}`;
         } else if (file.type === 'image') {
           return `\n\n🖼️ **Image: ${file.name}**\n${file.content}`;
         } else {
           return `\n\n📄 **Fichier: ${file.name}**\n\`\`\`\n${file.content}\n\`\`\``;
         }
       }).join('\n');
-      
-      // Pour les PDFs, le message utilisateur est déjà inclus dans filesContent
-      if (uploadedFiles.some(f => f.type === 'pdf')) {
-        finalMessage = filesContent;
+
+      // AI-facing message contains full file content
+      finalMessageAI = `${inputMessage}${filesContentForAI}`;
+
+      // User-visible message should NOT contain full file text. Show a small
+      // card/placeholder instead so it can be safely saved and shown after reload.
+      const pdfFiles = uploadedFiles.filter(f => f.type === 'pdf');
+      if (pdfFiles.length > 0) {
+        // Keep the PDF card/icon format but generate a clean short preview.
+        // Many PDF contents come with a header like:
+        // [DOCUMENT PDF ANALYSÉ]\nFichier: ...\nCONTENU COMPLET:\n<full text>
+        // Remove that header and keep only the real content preview.
+        // Show only icon, filename and size — no preview, no question
+        userDisplayMessage = pdfFiles.map(f => {
+          const sizeKb = Math.round(((f.size || 0) / 1024));
+          return `📄 **${f.name}** (${sizeKb} KB)`;
+        }).join('\n');
       } else {
         finalMessage = `${inputMessage}${filesContent}`;
       }
@@ -4402,19 +4429,28 @@ L'utilisateur veut que tu analyses ce document. Réponds directement à sa quest
       return;
     }
 
-    // Message utilisateur propre - SANS ajouter le texte du PDF (la carte suffit!)
-    let userDisplayMessage = inputMessage;
-    
     // Préparer les infos des fichiers pour l'affichage (sans le contenu)
     const filesForDisplay = uploadedFiles.map(f => ({
       name: f.name,
       type: f.type,
       size: f.size
     }));
-    
-    const userMessage: Message = { 
-      role: 'user', 
-      content: userDisplayMessage || inputMessage || "Analyse cette image",
+
+    // If we have a PDF card, persist only the card but display the card + the
+    // user's input beneath it in the UI. This shows the user's message visually
+    // while keeping the DB-stored content concise.
+
+  // Keep a copy of the user's typed question to send to the server so it can
+  // be persisted separately (so it will still appear under the PDF after
+  // a page refresh). Capture before clearing input state.
+  const userQuestionForSave = inputMessage ? String(inputMessage).trim() : '';
+
+  const persistedMessageForSave = userDisplayMessage || inputMessage || "";
+  const displayContent = (inputMessage || "Analyse cette image");
+
+    const userMessage: Message = {
+      role: 'user',
+      content: displayContent,
       images: uploadedImages.length > 0 ? [...uploadedImages] : undefined,
       files: filesForDisplay.length > 0 ? filesForDisplay : undefined
     };
@@ -4433,7 +4469,13 @@ L'utilisateur veut que tu analyses ce document. Réponds directement à sa quest
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           projectId: selectedProject.id,
-          message: finalMessage || inputMessage || "Analyse cette image",
+          // Send full AI-facing message but also include a short persistedMessage
+          // that the server will save instead of the raw AI payload.
+          message: finalMessageAI || inputMessage || "Analyse cette image",
+          persistedMessage: persistedMessageForSave,
+          // Also send the user's typed question explicitly so the server can
+          // persist it (so it shows under the PDF after reload).
+          userQuestion: userQuestionForSave,
           chapterId: selectedChapter?.id,
           images: uploadedImages.length > 0 ? uploadedImages : undefined,
         }),
@@ -4741,7 +4783,7 @@ L'utilisateur veut que tu analyses ce document. Réponds directement à sa quest
         </div>
 
         {/* Chapitres */}
-        {selectedProject && (
+        {/* {selectedProject && (
           <div className="border-t border-white/10 p-4">
             <div className="flex items-center justify-between mb-3">
               <h2 className="text-white font-semibold">Chapitres</h2>
@@ -4782,7 +4824,7 @@ L'utilisateur veut que tu analyses ce document. Réponds directement à sa quest
               ))}
             </div>
           </div>
-        )}
+        )} */}
       </motion.div>
 
       {/* Overlay mobile pour fermer la sidebar */}
@@ -5909,41 +5951,96 @@ L'utilisateur veut que tu analyses ce document. Réponds directement à sa quest
                               unicodeBidi: 'embed'
                             }}
                           >
-                            <ReactMarkdown
-                            components={{
-                              // Style personnalisé pour les éléments markdown
-                              h1: ({node, ...props}) => <h1 className="text-2xl font-bold mb-4 mt-6" {...props} />,
-                              h2: ({node, ...props}) => <h2 className="text-xl font-bold mb-3 mt-5" {...props} />,
-                              h3: ({node, ...props}) => <h3 className="text-lg font-bold mb-2 mt-4" {...props} />,
-                              h4: ({node, ...props}) => <h4 className="text-base font-bold mb-2 mt-3" {...props} />,
-                              p: ({node, ...props}) => <p className="mb-3 leading-relaxed" {...props} />,
-                              strong: ({node, ...props}) => <strong className="font-bold text-purple-200" {...props} />,
-                              em: ({node, ...props}) => <em className="italic text-pink-200" {...props} />,
-                              ul: ({node, ...props}) => <ul className="list-disc list-inside mb-3 space-y-1" {...props} />,
-                              ol: ({node, ...props}) => <ol className="list-decimal list-inside mb-3 space-y-1" {...props} />,
-                              li: ({node, ...props}) => <li className="ml-4" {...props} />,
-                              code: ({node, inline, className, children, ...props}: any) => {
-                                const match = /language-(\w+)/.exec(className || '');
-                                const language = match ? match[1] : '';
-                                const value = String(children).replace(/\n$/, '');
-                                
-                                return !inline && language ? (
-                                  <CodeBlock language={language} value={value} />
-                                ) : inline ? (
-                                  <code className="bg-white/10 px-1.5 py-0.5 rounded text-sm font-mono" {...props}>
-                                    {children}
-                                  </code>
-                                ) : (
-                                  <code className="block bg-slate-800 p-3 rounded-lg my-2 overflow-x-auto font-mono text-sm" {...props}>
-                                    {children}
-                                  </code>
-                                );
-                              },
-                              blockquote: ({node, ...props}) => <blockquote className="border-l-4 border-purple-500 pl-4 italic my-3" {...props} />,
-                            }}
-                          >
-                            {msg.content}
-                          </ReactMarkdown>
+                            {(() => {
+                              // If the stored message looks like a PDF card (we store cards
+                              // starting with the 📄 emoji), render a styled file-card and
+                              // then the user's question beneath it. This preserves the
+                              // PDF styling after a page refresh even when the original
+                              // msg.files metadata isn't available.
+                              try {
+                                const content = String(msg.content || '');
+                                if (content.trim().startsWith('📄')) {
+                                  const [cardLine, ...rest] = content.split('\n\n');
+                                  const cardText = cardLine.replace(/^📄\s*/, '').replace(/\*\*/g, '').trim();
+                                  const question = rest.join('\n\n').trim();
+
+                                  return (
+                                    <>
+                                      <div className={`flex items-start gap-3 px-4 py-3 rounded-xl border-2 transition-all ${
+                                        'bg-gradient-to-br from-red-500/10 to-pink-500/10 border-red-500/40'
+                                      }`}>
+                                        <div className="flex items-center justify-center w-12 h-12 bg-red-500/20 rounded-lg flex-shrink-0">
+                                          <FileText className="w-7 h-7 text-red-400" />
+                                        </div>
+                                        <div className="flex flex-col flex-1 min-w-0">
+                                          <span className="text-sm font-semibold text-white truncate" title={cardText}>
+                                            {cardText}
+                                          </span>
+                                          <span className="text-xs font-medium text-red-400">
+                                            📄 PDF
+                                          </span>
+                                        </div>
+                                      </div>
+
+                                      {question && (
+                                        <div className="mt-3 prose prose-invert max-w-none">
+                                          <ReactMarkdown
+                                            components={{
+                                              p: ({node, ...props}) => <p className="mb-2 leading-relaxed text-white/90" {...props} />,
+                                              strong: ({node, ...props}) => <strong className="font-bold text-purple-200" {...props} />,
+                                              em: ({node, ...props}) => <em className="italic text-pink-200" {...props} />,
+                                            }}
+                                          >
+                                            {question}
+                                          </ReactMarkdown>
+                                        </div>
+                                      )}
+                                    </>
+                                  );
+                                }
+                              } catch (e) {
+                                // Fall back to normal rendering on parse errors
+                                console.error('Erreur parsing PDF-card content:', e);
+                              }
+
+                              // Default: render the content as markdown
+                              return (
+                                <ReactMarkdown
+                                  components={{
+                                    h1: ({node, ...props}) => <h1 className="text-2xl font-bold mb-4 mt-6" {...props} />,
+                                    h2: ({node, ...props}) => <h2 className="text-xl font-bold mb-3 mt-5" {...props} />,
+                                    h3: ({node, ...props}) => <h3 className="text-lg font-bold mb-2 mt-4" {...props} />,
+                                    h4: ({node, ...props}) => <h4 className="text-base font-bold mb-2 mt-3" {...props} />,
+                                    p: ({node, ...props}) => <p className="mb-3 leading-relaxed" {...props} />,
+                                    strong: ({node, ...props}) => <strong className="font-bold text-purple-200" {...props} />,
+                                    em: ({node, ...props}) => <em className="italic text-pink-200" {...props} />,
+                                    ul: ({node, ...props}) => <ul className="list-disc list-inside mb-3 space-y-1" {...props} />,
+                                    ol: ({node, ...props}) => <ol className="list-decimal list-inside mb-3 space-y-1" {...props} />,
+                                    li: ({node, ...props}) => <li className="ml-4" {...props} />,
+                                    code: ({node, inline, className, children, ...props}: any) => {
+                                      const match = /language-(\w+)/.exec(className || '');
+                                      const language = match ? match[1] : '';
+                                      const value = String(children).replace(/\n$/, '');
+                                      
+                                      return !inline && language ? (
+                                        <CodeBlock language={language} value={value} />
+                                      ) : inline ? (
+                                        <code className="bg-white/10 px-1.5 py-0.5 rounded text-sm font-mono" {...props}>
+                                          {children}
+                                        </code>
+                                      ) : (
+                                        <code className="block bg-slate-800 p-3 rounded-lg my-2 overflow-x-auto font-mono text-sm" {...props}>
+                                          {children}
+                                        </code>
+                                      );
+                                    },
+                                    blockquote: ({node, ...props}) => <blockquote className="border-l-4 border-purple-500 pl-4 italic my-3" {...props} />,
+                                  }}
+                                >
+                                  {msg.content}
+                                </ReactMarkdown>
+                              );
+                            })()}
                           </div>
                         </>
                       )}
